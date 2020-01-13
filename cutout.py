@@ -135,13 +135,15 @@ def export_png (pathname , X , Y , Z , r , c, csv_abs_path) :
 	img = cv2.imread (pathname, cv2.IMREAD_UNCHANGED)
 	os.remove (pathname)
 
+	# Shape format of cv2.resize is opposite
 	resized = cv2.resize (img, (columns, rows), interpolation = cv2.INTER_AREA)
 	resized2 = np.ndarray (shape = (rows,columns))
 	for i in range(0, rows) :
 		resized2[rows-i-1] = resized[i,:,0]
 		
 	############################################################
-	# Reshaping the image as matplotlib's d
+	# Reshaping the image as matplotlib's plotting has unreliable
+	# dimensions.
 	############################################################
 
 	from PIL import Image
@@ -302,7 +304,9 @@ def smooth_contour (png_path , contour_path , r , c , levels) :
 	if Z_ctr_uq[0] != 0 :
 		Z_ctr_uq.insert(0, 0)
 
-	os.remove (contour_path)
+	os.remove (contour_path)	# Removing temporary file
+	
+	# cv2.resize shape has opposite format
 	resized = cv2.resize (img, (columns, rows), interpolation = cv2.INTER_AREA)
 	
 	for i in range (0, resized.shape[0]) :

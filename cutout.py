@@ -13,6 +13,13 @@ import sys
 import importlib
 
 def cutout_test () :
+	############################################################
+	# I had been facing problems with importing custom modules
+	# and subsequently loading functions into the environment on
+	# Google colab, this code runs directly after the 'Initialisation'
+	# stage of the main pipeline, to check that import works on Colab
+	# properly.
+	############################################################
 	print ("Initialisation complete!")
 
 def cutout_fits (filename , sexa_cood, radius, csv_abs_path) :

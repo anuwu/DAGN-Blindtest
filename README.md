@@ -8,7 +8,7 @@ Changes from the previous repository -
 4. Implemented SNR. Added another class called - 'NoPeak' - apart from the regular 'Single' or 'Double'.
 5. Added feature to send e-mail notifications for completion progress.
 
-The pipeline has been designed to run on the Google Colab environment. A lot of downloads is required for which Google's network will prove useful. If you wish, you could also run it locally.
+The pipeline has been designed to run on the Google Colab environment. A lot of downloads is required for which Google's network will prove useful. Also there are form-fields that help to setup some variables necessary for running the pipeline. If you wish, you could also run it locally. Just ensure to assign legal values to the form variables.
 
 Steps to run the pipeline -
 1. In one way or another, clone the repository into a directory in your google drive. Note down this directory.

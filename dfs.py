@@ -37,7 +37,7 @@ def get_regions (Z_search) :
 	############################################################
 	# Inputs - search region
 
-	# Returns a lit of connected regions
+	# Output -  Returns a list of connected regions
 	############################################################
 
 	regions = []	# Initial list of connected regions is empty

@@ -17,14 +17,19 @@ def env_level_contour_search (png_path , contour_path , peak_plot , background_r
 	# Inputs - path of smoothed image
 	#        - path of contour image
 	#        - name of the file where peaks will be indicated
-	#		 - background_ratio value. If 0, use env_level, if not, 
+	#	 - background_ratio value. If 0, use env_level, if not, 
 	#          use background_ratio * levels for envelope detection
-	# 		 - total contour levels
-	#		 - environment level
-	#		 - iterations to run gradient ascent for
-	#		 - neighborhood tolerance below which peaks are identical
-
-	# Returns the number of peaks, the list of unique peaks. Need to add list of connected components
+	# 	 - total contour levels
+	#	 - environment level
+	#	 - iterations to run gradient ascent for
+	#	 - neighborhood tolerance below which peaks are identical
+	#
+	# Output - Returns - peak distribution
+	#		   - smoothed cutout image data
+	#		   - region of high contour
+	#		   - contour image data
+	#		   - list of pixel values corresponding to each
+	#		     contour level
 	############################################################
 
 
@@ -35,11 +40,11 @@ def env_level_contour_search (png_path , contour_path , peak_plot , background_r
 	grad = importlib.reload(grad)
 	dfs = importlib.reload(dfs)
 
-	#################################
+	############################################################
 	# (i,j) represents the png coordinate
 	# To shift to cutout coordinates for visualisation
 	# (i , j) ---> (rows - i , j)
-	#################################
+	############################################################
 
 	# use background_ratio value only if it isn't zero ...
 	if not background_ratio == 0 :
@@ -54,15 +59,23 @@ def env_level_contour_search (png_path , contour_path , peak_plot , background_r
 	# Reading contour ...
 	contour_img = cv2.imread(contour_path)
 	Z_ctr = contour_img[:,:,0]
-
-	############################################################################################################
-	############################################################################################################
 	
-	Z_ctr_uq = pku.contour_unique_val(Z_ctr)		# Contains $level number of pixel values corresponding to each level
+	############################################################
+	# matplotlib's contourf() function in smooth_contour() in
+	# cutout.py does not always generate the number of levels as 
+	# passed to it. It depends on the nature of the input image fed 
+	# to it. Thus, we need to deterine the actual number of contour
+	# levels using pku.contour_unique_val and then scale the 
+	# environment level accordingly.
+	############################################################
+
+	# Contains $level number of pixel values corresponding to each level
+	Z_ctr_uq = pku.contour_unique_val(Z_ctr)	
+
+	# Rescaling actual environment level
 	actual_env_level = int(np.ceil(env_level * len(Z_ctr_uq)/levels))
 
-
-	# contains a list of tuples that lie in high contour region ...
+	# Constructing a list of tuples that lie in high contour region 
 	Z_high = []			
 	for i in range (0 , rows) :
 		for j in range (0 , columns) :
@@ -73,32 +86,39 @@ def env_level_contour_search (png_path , contour_path , peak_plot , background_r
 
 	if len(Z_high) == 0 :
 		return (None, Z_img, [], Z_ctr, Z_ctr_uq)
-
-	peak_dist = grad.grad_asc (Z_img , Z_high , iters , neigh_tol)			# run gradient ascent $iters times and obtain histogram of peaks
-	Z_high_regions = dfs.get_regions (Z_high)		# Find connected components of Z_high to classify peaks later
+	
+	# run gradient ascent $iters times and obtain histogram of peaks
+	peak_dist = grad.grad_asc (Z_img , Z_high , iters , neigh_tol)	
+	
+	# Find connected components of Z_high to classify peaks later
+	Z_high_regions = dfs.get_regions (Z_high)		
 
 	return (peak_dist , Z_img , Z_high_regions, Z_ctr, Z_ctr_uq)	
 
 
 def env_level_peak_plot (filename, background_ratio , 
-						levels, env_level , iters , neigh_tol , thicc , done_file, csv_abs_path, param_test) :
+			levels, env_level , iters , neigh_tol , thicc , 
+			 done_file, csv_abs_path, param_test) :
 	############################################################
 	# Inputs - object name
-	#        - standard size for any future machine learning
-	#        - name of the file where peaks will be indicated
-	#		 - background_ratio value. If 0, use env_level, if not, 
-	#		   use background_ratio * levels for envelope detection
-	# 		 - total contour levels
-	#		 - environment level
-	#		 - iterations to run gradient ascent for
-	#		 - neighborhood tolerance below which peaks are identical
-	#		 - Truth value to thinly mark peak, or thickly mark it
+	#	 - background_ratio value. If 0, use env_level, if not, 
+	#	   use background_ratio * levels for envelope detection
+	# 	 - total contour levels
+	#	 - environment level
+	#	 - iterations to run gradient ascent for
+	#	 - neighborhood tolerance below which peaks are identical
+	#	 - Truth value to thinly mark peak, or thickly mark it
+	#	 - file handler of logfile for any future development
+	#	 - path of saving the peak plots
 	#        - parameter testing truth value. Overwrites existing
-	#		   png file is true, else it doesn't.
-
-	# Returns a pair of truth values that states whether the 
-	# original smoothed image has one peak or not. The other
-	# value states the same for the $std size image
+	#	   png file is true, else it doesn't.
+	#
+	# Output - Returns a string that denotes whether the object had
+	#	   1. Single Peak
+	#	   2. Double Peak
+	#	   3. NoPeak
+	#	   4. NoNoise (Hence don't implement SNR. Mostly no peak)
+	#	   5. Failure (Can occur in the RAREST cases)
 	############################################################
 
 
@@ -106,16 +126,15 @@ def env_level_peak_plot (filename, background_ratio ,
 	pku = importlib.reload (pku)
 
 	is_only_og = None 
-	is_only_std = None
-
 
 	png_og_smooth_path = csv_abs_path + "/Data/" + filename + "_og_size_cutout_smooth.png"
 	contour_og_path = csv_abs_path + "/Data/" + filename + "_og_size_contour.png"
-	peak_plot_og = csv_abs_path + "/Data/" + filename + "_og_size_env_peaks"		#18
+	peak_plot_og = csv_abs_path + "/Data/" + filename + "_og_size_env_peaks"
 
-	############################################################################################################
-	############################################################################################################
-	#Plot the peaks for original sized image - 
+	############################################################
+	# Checking whether files already exists or not, and taking 
+	# appropriate decision with respect to param_test
+	############################################################
 
 	if param_test :
 		# Remove file if any of them are present ...
@@ -127,27 +146,28 @@ def env_level_peak_plot (filename, background_ratio ,
 			os.remove (peak_plot_og + "_none.png")
 
 		# Obtain the peak distribution, smoothed data, and list of connected components ...
-		peak_dist , Z_img , Z_regions, Z_ctr, Z_ctr_uq = env_level_contour_search (png_og_smooth_path , contour_og_path , peak_plot_og , 
-								background_ratio , levels, env_level ,iters , neigh_tol)
-
-		#if len(Z_regions) == 0 :
-			#return None 
+		peak_dist , Z_img , Z_regions, Z_ctr, Z_ctr_uq = env_level_contour_search (png_og_smooth_path , 
+											   contour_og_path , peak_plot_og , 
+											   background_ratio , levels, 
+											   env_level ,iters , neigh_tol)
 
 		# Plot the peaks and obtain the truth value for single peak ...
-		is_only_og = pku.peak_plot (peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, levels, env_level, peak_plot_og , True, done_file)
+		is_only_og = pku.peak_plot (peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, 
+					    levels, env_level, peak_plot_og , True, done_file)
 	else :
-		# not (AO + AT) = not (A(O+T)) = not(top pair + only) or (not all)
-		#if (not (os.path.exists (peak_plot_og + "_top_pair.png" or os.path.exists (peak_plot_og + "_only.png")))) or  (not os.path.exists (peak_plot_og + "_all.png")) :
+		# If any of the peak plot types do not exist -
 		if not (os.path.exists (peak_plot_og + "_top_pair.png") or os.path.exists (peak_plot_og + "_only.png") or os.path.exists (peak_plot_og + "_none.png")) :
+			
 			# Obtain the peak distribution, smoothed data, and list of connected components ...
-			peak_dist , Z_img , Z_regions, Z_ctr, Z_ctr_uq = env_level_contour_search (png_og_smooth_path , contour_og_path , peak_plot_og , 
-								background_ratio , levels, env_level ,iters , neigh_tol)
+			peak_dist , Z_img , Z_regions, Z_ctr, Z_ctr_uq = env_level_contour_search (png_og_smooth_path , 
+												   contour_og_path , peak_plot_og ,
+												   background_ratio , levels, 
+												   env_level ,iters , neigh_tol)
 
-			#if len(Z_regions) == 0 :
-				#return None 
 
 			# Plot the peaks and obtain the truth value for single peak ...
-			is_only_og = pku.peak_plot(peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, levels, env_level, peak_plot_og , False, done_file)
+			is_only_og = pku.peak_plot(peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, 
+						   levels, env_level, peak_plot_og , False, done_file)
 		
 
 	return is_only_og

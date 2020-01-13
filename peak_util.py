@@ -4,25 +4,36 @@ import os
 import random
 
 def get_neighbour_tuples (x,y) :
+	############################################################
+	# Given a cartesian point, returns a list of its 8 neighbors
+	############################################################
 	neighbour_tuples = [ (x+1,y),
-						(x,y+1),
-						(x-1,y),
-						(x,y-1),
-						(x+1,y+1),
-						(x+1,y-1),
-						(x-1,y+1),
-						(x-1,y-1)
-						]
+			     (x,y+1),
+			     (x-1,y),
+			     (x,y-1),
+			     (x+1,y+1),
+			     (x+1,y-1),
+			     (x-1,y+1),
+			     (x-1,y-1)
+			   ]
 
 	return neighbour_tuples
 
 def get_avg_neighvals (x, y, cutout) :
+	############################################################
+	# Inputs - x coordinate
+	#	 - y coorindate
+	#	 - cutout data
+	#
+	# Output - Returns the average pixel values of the point and
+	#	   its neighbors
+	############################################################
+	
 	neighbour_tuples = get_neighbour_tuples (x, y)
-
 	val = 0 
 	for (xn, yn) in neighbour_tuples :
 		pix_val = cutout[xn][yn]
-		if pix_val < 0 :
+		if pix_val < 0 :	#Negative pixel values replaced with 0
 			pix_val = 0
 
 		val = val + pix_val
@@ -31,6 +42,14 @@ def get_avg_neighvals (x, y, cutout) :
 	return val 
 
 def thicc_mark (Z_flip, rows, x, y) :
+	############################################################
+	# Inputs - Flipped 2d image data to be saved.
+	#	 - number of rows of image
+	#	 - x coordinate at which to mark peak
+	#	 - y coordinate arounch which to mark peak
+	#
+	# Output - Returns the flipped matrix after thick marking
+	############################################################
 	Z_flip[rows - x-1+1,y] = 0
 	Z_flip[rows - x-1-1,y] = 0
 	Z_flip[rows - x-1,y+1] = 0	
@@ -42,17 +61,44 @@ def thicc_mark (Z_flip, rows, x, y) :
 
 	return Z_flip
 
-def peak_mark (Z_flip, rows, x, y, snr, cutout, done_file, thicc) :
+def peak_mark (Z_flip, rows, x, y, cutout, done_file, thicc) :
+	############################################################
+	# Inputs - Flipped image data to be saved
+	#	 - Number of rows of image
+	#	 - x coordinate of peak
+	#	 - y coordinate of peak
+	#	 - cutout data
+	#	 - log file handler for any future purposes
+	#	 - thicc marking boolean value
+	#
+	# Output - Outputs the flipped image data after marking
+	############################################################
 	Z_flip[rows - x-1,y] = 0
-	#print ("Peak 1 is at " + str((x, y)) + " with value = " + str(cutout[x][y]) + " and snr = " + str(snr))
-	#done_file.write ("Peak 1 is at " + str((x, y)) + " with value = " + str(cutout[x][y]) + " and snr = " + str(snr))
-	# Thick marking ...
 	if thicc :
 		Z_flip = thicc_mark (Z_flip, rows, x, y)
 
 	return Z_flip
 
 def double_snr_peak_mark (Z_flip, rows, px1, py1, snr1, px2, py2, snr2, cutout, done_file, thicc) :
+	############################################################
+	# Inputs - Flipped image data
+	#	 - Number of rows of flipped image data
+	#	 - x-coordinate of peak 1
+	#	 - y-coordinate of peak 1
+	#	 - SNR of peak 1
+	#	 - x-coordinate of peak 2
+	#	 - y-coordinate of peak 2
+	#	 - SNR of peak 2
+	#	 - cutout data
+	#	 - log file handler for future purposes
+	# 	 - thicc marking boolean value
+	#
+	# Output - Returns the flipped image data post peak marking
+	#	   and undergoing SNR checks
+	############################################################
+	
+	
+	
 	case_list = {1: 'Double', 2:'Single1', 3:'Single2', 4:'NoPeak'}
 	if snr1 >= 3 and snr2 >= 3 :
 		snr_case = 1
@@ -62,16 +108,22 @@ def double_snr_peak_mark (Z_flip, rows, px1, py1, snr1, px2, py2, snr2, cutout, 
 		snr_case = 3
 	else :
 		snr_case = 4
+		
+	############################################################
+	# The reasoning behind the conditions in this function is that 
+	# a detected peak is not a legitimate peak if it has an SNR 
+	# lesser than 3.
+	############################################################
 
 	if case_list[snr_case] == 'Double' :
-		Z_flip = peak_mark (Z_flip, rows, px1, py1, snr1, cutout, done_file, thicc)
-		Z_flip = peak_mark (Z_flip, rows, px2, py2, snr2, cutout, done_file, thicc)
+		Z_flip = peak_mark (Z_flip, rows, px1, py1, cutout, done_file, thicc)
+		Z_flip = peak_mark (Z_flip, rows, px2, py2, cutout, done_file, thicc)
 		peak_plot_ret = 'Double'  
 	elif case_list[snr_case] == 'Single1' :
-		Z_flip = peak_mark (Z_flip, rows, px1, py1, snr1, cutout, done_file, thicc)
+		Z_flip = peak_mark (Z_flip, rows, px1, py1, cutout, done_file, thicc)
 		peak_plot_ret = 'Single' 
 	elif case_list[snr_case] == 'Single2' :
-		Z_flip = peak_mark (Z_flip, rows, px2, py2, snr2, cutout, done_file, thicc)
+		Z_flip = peak_mark (Z_flip, rows, px2, py2, cutout, done_file, thicc)
 		peak_plot_ret = 'Single'
 	elif case_list[snr_case] == 'NoPeak' :
 		peak_plot_ret = 'NoPeak'
@@ -84,8 +136,8 @@ def contour_unique_val (Z_ctr) :
 	############################################################
 	# Inputs - png data
 	
-	# Returns a list of the unique contour pixel values in 
-	# ascending order.
+	# Output - Returns a list of the unique contour pixel values in 
+	# 	   ascending order.
 	############################################################
 	Z_ctr_uq = []
 
@@ -101,21 +153,27 @@ def contour_unique_val (Z_ctr) :
 def border_problem_decide (x , y , Z_regions) :
 	############################################################
 	# Inputs - peak x
-	#		 - peak y
-	#		 - list of connected regions
+	#	 - peak y
+	#	 - list of connected regions
 	
 	# Returns True if reported peak is at the edge of a region 
 	# Else it returns False.
 	############################################################
 	neighbor_tuples = [ (x+1,y),
-						(x,y+1),
-						(x-1,y),
-						(x,y-1),
-						(x+1,y+1),
-						(x+1,y-1),
-						(x-1,y+1),
-						(x-1,y-1)
-						]
+			    (x,y+1),
+			    (x-1,y),
+			    (x,y-1),
+			    (x+1,y+1),
+			    (x+1,y-1),
+		            (x-1,y+1),
+			    (x-1,y-1)
+			  ]
+	
+	############################################################
+	# The reasoning is self-explanatory. If any coordinate point 
+	# neighbouring a detected peak does not lie in the high-contour
+	# region, it would have arisen out of edge-crowding.
+	############################################################
 
 	border_problem = False 
 	for tup in neighbor_tuples :
@@ -125,7 +183,19 @@ def border_problem_decide (x , y , Z_regions) :
 
 	return border_problem
 
+
 def get_noise_cutout (peak_plot_name, levels, env_level, Z_ctr_uq, Z_ctr) :
+	############################################################
+	# Inputs - To-be path of peak plot image (except appended flags)
+	#	 - levels of contour
+	#	 - environment level
+	#	 - actual pixel value of contour levels
+	#	 - contour image data
+	#
+	# Output - Returns the average noise level and cutout data
+	############################################################
+	
+	# Extracting path of FITS file
 	obj_path = peak_plot_name[:peak_plot_name.find('_')]
 	fits_path = obj_path + "_cut.fits"
 
@@ -134,7 +204,44 @@ def get_noise_cutout (peak_plot_name, levels, env_level, Z_ctr_uq, Z_ctr) :
 	hdu = hdul[0]
 	cutout = hdu.data
 
+	# Rescaling actual environment level
 	actual_env_level = int(np.ceil(env_level * len(Z_ctr_uq)/levels))
+	
+	############################################################
+	# The logic to the part below is the following. It aims to find
+	# a list of points which can be considered as noise and do not
+	# lie at the boundary of the FITS cutout.
+	#
+	# Concentrate on the code inside the while loop -
+	# For a certain value of i, noise_ctr_val is set to the pixel 
+	# value of the ith contour level. noise_list is a list that 
+	# picks out those points that have a pixel value equal to 
+	# noise_ctr_val
+	#
+	# Among the points in noise_list, those that are not on the
+	# boundary of the FITS cutout are appended into the list
+	# noise_list_noboundary
+	#
+	# Further, among this list, those points whose one of 8 neighbors
+	# belongs to a higher contour level than the ith level are discarded.
+	# The points that remain are put into lowest_noise_list. This is
+	# conceptually the noise list we are seeking.
+	#
+	# It could be possible that after this heavily filtration process,
+	# lowest_noise_list ends up being an enpty list. In such a case
+	# the final noise list is set to noise_list_noboundary.
+	#
+	# If this too is empty, then i is incremented by 1 and the loop
+	# executes again. This repeats until i reaches that pixel value
+	# which defines the environment level after proper rescaling
+	# (held in variable actual_env_level). At this point, we conclude
+	# that no reliable noise data can be extracted from the image
+	# and SNR checks have failed.
+	#
+	# This is what results in the 'NoNoise' label in the output csv
+	# file of the pipeline. However, this is rarely expected to occur
+	# Even if it does, the object most probably has no peaks in actuality.
+	############################################################
 	
 	i = 0
 	while True :
@@ -185,7 +292,7 @@ def get_noise_cutout (peak_plot_name, levels, env_level, Z_ctr_uq, Z_ctr) :
 
 	return (avg_noise, cutout)
 
-# Note - The algorithm can be improved by reworking the len(reg1) > len(reg2) condition. It's too strict
+# Note - The algorithm can be improved by reworking the len(reg1) > len(reg2) condition. It's too strict, but lite?
 def peak_plot (peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, levels, env_level, peak_plot_name , thicc, done_file) :
 	############################################################
 	# Inputs - peak histogram
@@ -276,7 +383,7 @@ def peak_plot (peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, levels, env_leve
 			# Selecting region with larger number ofpoints ...
 			if len(reg1) > len(reg2) :
 				if snr1 >= 3 :
-					Z_flip = peak_mark (Z_flip, rows, px1, py1, snr1, cutout, done_file, thicc)
+					Z_flip = peak_mark (Z_flip, rows, px1, py1, cutout, done_file, thicc)
 				else :
 					peak_plot_ret = 'NoPeak' 
 					#return None 
@@ -284,14 +391,14 @@ def peak_plot (peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, levels, env_leve
 			# Selecting region with larger number of points ...			
 			elif len(reg2) > len(reg1) :
 				if snr2 >= 3 :
-					Z_flip = peak_mark (Z_flip, rows, px2, py2, snr2, cutout, done_file, thicc)
+					Z_flip = peak_mark (Z_flip, rows, px2, py2, cutout, done_file, thicc)
 				else :
 					peak_plot_ret = 'NoPeak'
 					#return None
 
 			# If regions have same length, then there are actually two peaks ...
 			else :
-				Z_flip, peak_plot_ret = double_snr_peak_mark (Z_flip, rows, px1, py1, snr1, px2, py2, snr2, cutout, done_file, thicc)
+				Z_flip, peak_plot_ret = double_snr_peak_mark (Z_flip, rows, px1, py1, px2, py2, snr2, cutout, done_file, thicc)
 				#if peak_plot_ret == None :
 					#return None 
 		else :
@@ -302,14 +409,14 @@ def peak_plot (peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, levels, env_leve
 
 			if not border_problem_1 and border_problem_2 :
 				if snr1 >= 3 :
-					Z_flip = peak_mark (Z_flip, rows, px1, py1, snr1, cutout, done_file, thicc)
+					Z_flip = peak_mark (Z_flip, rows, px1, py1, cutout, done_file, thicc)
 					peak_plot_ret = 'Single' 
 				else :
 					peak_plot_ret = 'NoPeak' 
 					#return None
 			elif border_problem_1 and not border_problem_2 :
 				if snr2 >= 3 :
-					Z_flip = peak_mark (Z_flip, rows, px2, py2, snr2, cutout, done_file, thicc)
+					Z_flip = peak_mark (Z_flip, rows, px2, py2, cutout, done_file, thicc)
 					peak_plot_ret = 'Single' 
 				else :
 					peak_plot_ret = 'NoPeak'
@@ -342,7 +449,7 @@ def peak_plot (peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, levels, env_leve
 		snr1 = signal1/avg_noise
 
 		if snr1 >= 3 :
-			Z_flip = peak_mark (Z_flip, rows, px1, py1, snr1, cutout, done_file, thicc)
+			Z_flip = peak_mark (Z_flip, rows, px1, py1, cutout, done_file, thicc)
 		else :
 			peak_plot_ret = 'NoPeak'
 

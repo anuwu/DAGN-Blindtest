@@ -425,7 +425,7 @@ def peak_plot (peak_dist , Z_regions , Z_img , Z_ctr, Z_ctr_uq, levels, env_leve
 
 			# If regions have same length, then there are actually two peaks.
 			else :
-				Z_flip, peak_plot_ret = double_snr_peak_mark (Z_flip, rows, px1, py1, px2, py2, snr2, 
+				Z_flip, peak_plot_ret = double_snr_peak_mark (Z_flip, rows, px1, py1, snr1, px2, py2, snr2, 
 									      cutout, done_file, thicc)
 		else :
 			# This case is needed in case of crowding of peaks around a boundary

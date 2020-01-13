@@ -125,7 +125,7 @@ def env_level_peak_plot (filename, background_ratio ,
 	import peak_util as pku
 	pku = importlib.reload (pku)
 
-	is_only_og = None 
+	is_only_og = 'Done'
 
 	png_og_smooth_path = csv_abs_path + "/Data/" + filename + "_og_size_cutout_smooth.png"
 	contour_og_path = csv_abs_path + "/Data/" + filename + "_og_size_contour.png"

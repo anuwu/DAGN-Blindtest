@@ -20,7 +20,7 @@ Steps to query SDSS to obtain galaxy objIDs -
 2. Send an e-mail to dagn2020iia@gmail.com with your SciServer username. I shall add you to the collaborative group that contains the master table of all galaxy 
 3. Open CasJobs and execute any query on SDSS DR16's view named 'Galaxy'. Ensure to insert the following phrase at the appropriate location in your query.
 
-> NOT IN (SELECT * FROM AstrIRG_DAGN.anwesh0304.SDSSDR16_Galaxy_Master)
+> NOT IN (SELECT * FROM AstrIRG_DAGN.dagn2020.SDSSDR16_Galaxy_Master)
 
 This will ensure that no objID, that has already been processed previously, ends up in your query resut.
 4. Download the query result as a .csv file and place it in the appropriate location in your google drive. Now you can run the pipeline

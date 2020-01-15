@@ -1,5 +1,3 @@
-# The graph nodes (grid points) have already been appended with color.
-
 def dfs_visit (Z , point) :
 	############################################################
 	# Inputs - png data
@@ -23,8 +21,8 @@ def dfs_visit (Z , point) :
 						(x-1,y-1)
 						]
 
+    # The graph nodes (grid points) have already been appended with color.
 	for tup in neighbor_tuples :
-
 		# Need this loop to check if adjacent points exist within the search region ...
 		for z_tup in Z :
 			if tup[0] == z_tup[0] and tup[1] == z_tup[1] and z_tup[2] == 'w' :

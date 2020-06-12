@@ -1,0 +1,688 @@
+
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{color}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage[T1]{fontenc}
+
+
+\usepackage{algorithm2e}
+\SetKwFor{For}{for (}{) $\lbrace$}{$\rbrace$}
+
+\newcommand{\comment}[1]{}
+
+\begin{document}
+\title{\textbf{Detection of Dual Active Nuclei Galaxies Using SDSS Data}}
+\author{Anwesh Bhattacharya, Snehanshu Saha and Mousumi Das}
+\date{\today}
+\maketitle
+
+\section{Abstract}
+
+Galaxy mergers are the most violent type of galaxy interaction and involves
+the collision of two or more galaxies and the transformation into a single
+galaxy that is called the merger remnant. Although the merging process does not
+involve the collision of stars, it does lead to cloud-cloud collisions, gas shocks
+and enhanced star formation in the final merger remnant. An important part of the
+merging process is the inspiralling of the nuclear Supermassive black holes (SMBHs) 
+belonging to the individual galaxies towards the center of the merger remnant. The final result is the formation of common envelope representing the new merged galaxy 
+containing two nuclei that host the individual SMBHs. If the SMBHs are accreting 
+or surrounded by star formation, they will appear as bright nuclei in a single envelope 
+in the optical images.
+
+\bigskip
+
+In this paper, we have introduced \textit{Graph-Boosted Gradient Ascent} (\textbf{GBGA}), a novel algorithm, that detects whether a given image of a galaxy is a potential candidate for a dual AGN (DAGN). We have tested the algorithm on a random sample of 10,000 galaxies from the Stripe 82\cite{abazajian}
+region, obtained a positive detection rate \textless \ 2\% , out of which <insert number here> are serious DAGN candidates by manual inspection.
+
+\bigskip
+
+\textit{Key Terms: Data Mining, Classification, Galaxy Merger, Common Envelope, Galaxy Nucleus, SDSS}
+ 
+\section{Introduction}
+
+A galaxy is a system of stars, interstellar gas, dust and dark matter bounded
+by gravitational forces. Based on their morphology galaxies are categorized as
+spiral, irregular and elliptical. Galaxies are not isolated but clustered in 
+groups and large galaxy clusters and hence they often interact at a distance or collide
+with one another. In these interactions the gravitational field of one galaxy affects the other one. If the two galaxies do not have enough momentum to continue to travel after interacting, they will finally collide and merge, leading to the formation 
+of a galaxy merger remnant.
+
+\bigskip
+
+Galaxy collisions are common during galaxy evolution. The outcome depends on the mass
+ratio of the merging galaxies. In cases where one galaxy is much larger than another, 
+the larger galaxy remains intact whereas the smaller galaxy gets stripped and becomes 
+part of the larger galaxy; this is usually called galaxy accretion or minor merger event.When the colliding galaxies are similar in mass and size, it is called a major merger event.When one or both the galaxies are gas rich, the merger is said to be a wet merger and when both galaxies are elliptical i.e. gas free, the merger is said to be a dry merger. However, wet or dry, major or minor, all mergers can lead to the formation of a single envelope containing two nuclei. Such dual nuclei systems represent the final stages of galaxy mergers.
+
+\bigskip
+
+The motivation of this paper is the development of a filtration pipeline to create a pool of dual AGN candidates. For the initial stage, we have used the catalog in \texit{Gimeno et. al.} as a test sample of  true double-nuclei (\textit{positives}) only. The parameters of the algorithm have been fine-tuned so as to achieve a high accuracy on this set (94\%).
+
+\bigskip
+
+Since the occurrence of positives in the sky is extremely rare in reality, when the same algorithm is tested on random images of galaxies from SDSS, a positive detection rate below 2\% is achieved. From the literature survey, it will become clear that dual AGN galaxies have been \textit{serendipitously} discovered \cite{satypal} \cite{jinny}. Hence, there is a need of a pipeline to sift through the enormous galaxy data of SDSS, to create a pool of potential dual AGN galaxies. The target of \textbf{GBGA} is to serve as the key algorithm in this filtration process.
+
+\bigskip
+
+The convention used in the remainder of this paper is to refer double nuclei galaxies as \textit{positive}, and single nuclei galaxies as \textit{negative}.
+
+\section{Literature Survey}	  
+
+The main catalog of this paper is the one enlisted in the paper by \textit{Gimeno} et. al. \cite{gimeno}. The catalog contains a list of 109 galaxies, out of which 47 were available in the \textit{SDSS DR15}. The paper has tried to answer questions such as relevance of galaxy interaction and minor mergers in formation of double nuclei and tries to investigate the correlation between geometric and photometric parameters of double nuclei and their host galaxies. It tries to address the physical processes involved predominant in the generation of double nuclei in disk galaxies, systematic differences or similarities between component nuclei, nucleus’ preferential place in the host system and motion of nucleus. The galaxies selected had a systematic velocities $cz$, and redshift $z$ in the range $cz$ \textless 15000 km/s, $z$ \textless 0.05, $m_B$ \textless 18 if redshift unavailable as redshift provides sample of object useful for design of systematic observational studies. The paper contains various histograms of projected nuclei separations and axis ratio of disk-mergers.
+
+\bigskip
+
+In 2014, \textit{Mezcua} et. al. \cite{mezcua} published a paper reviewing the Gimeno catalog and other papers using observations from the \textit{Chandra X-ray observatory} to analyse the astrophysical properties of Double Active Nuclei Galaxies (DAGNs). The paper mentions that mention that galaxy mergers are an important part of galactic evolution and considers Double Nuclei disk galaxies as candidates for mergers. The luminosity of each nuclei, and their relative  separation are derived from multi-component photometric fit of the galaxies in the R-band of the \textit{SDSS} optical images. Most of the sources have projected separations $\leq$ 4kpc. Ratio of nuclear luminosities indicates that most of the systems are likely in the coalescence stage of a major merger, which is supported by the existence of a single galaxy disk in 65\% of the systems studied and the finding of a correlation between nuclear luminosity and host luminosity for the single-disk systems. Sources fitted with as single disk are in a more evolved stage of the merger and present an enhancement of the nuclear luminosity compared to the double-disk systems. In the hierarchical galaxy formation models, galaxies grow in a $\Lambda$ cold dark matter ($\Lambda$CDM) universe in a “bottom-up” way through multiple mergers. Major mergers have been shown to be responsible for only approximately 20\% of the mass growth of massive galaxies at z \textless 1, which is a significant but not dominant fraction. Therefore, other mechanisms such as cold gas accretion or minor mergers must contribute to the mass growth of galaxies. Minor mergers can lead to a significant increase in mass and have been found to be more efficient at increasing galaxy radii than major mergers.
+
+\bigskip
+
+\textit{Koss} et. al. \cite{koss_bat} mentions the difficulty to resolve each AGN in optical and X-ray observations. They have used a the \textit{Swist Burst Alert Telescope} survey to create a catalog of $167$ active nuclei galaxies out of which $81$ have a close companion within a $100$ kpc radius. 
+
+\bigskip
+
+\textit{MRK 739} (also listed as \textit{NGC 3758} in \textit{Gimeno} et. al \cite{gimeno}) has been well known since 1986 due to the paper by \textit{Netzer} et. al. \cite{netzer}. In another paper by \textit{Koss} et. al \cite{koss_mrk739}, they have uses SDSS optical imaging and observations from the \textit{Chandra X-ray Observatory} and ruled out the possibility of \textit{MRK 739W} (the nuclei on the western side) being a starbust region, which is highly suggested by its optical spectra. \textit{MRK 739E} was already known to be an AGN due to \textit{Netzer} \cite{netzer}. By comparing the power law index of \textit{MRK 739W} with that of the average Ultra-luminous X-ray source (\textit{Bertran} et. al. \cite{bertram}). It is interesting to note that the optical spectra of \textit{MRK 739E} and \textit{MRK 739W} both have a peak around $6750$ Angstrom that falls under the R-band of the \textit{SDSS} filters.
+
+\bigskip
+
+The detection of double nuclei galaxies is also important from the point of view of Cosmology and Structure Formation. \textit{Davis} \cite{davis} and \textit{Springel} \cite{springel} suggest that galaxy interactions play an important role in the growth of their central SMBH. \textit{Komossa} and \textit{Zensus} also suggest theoretically that DAGNs must be found in relative abundance in our universe \cite{komossa_zensus}. However, such objects are rarely found as most of them are radio-quiet and are difficult to resolve in the optical. Previously, double-peaked narrow emission lines were used as the criteria for a galaxy to be a candidate DAGN. However, such a criteria is put to the test of nullification as such observations can be drawn from other phenomenon in single active nuclei galaxies itself (\textit{Xu} & \textit{Komossa} \cite{xu_komossa}). This suggests that alternative methods must be devised to procure candidates for DAGN galaxies. To this end, \textit{K. É. Gabányi} et. al. haved used the \textit{Very Large Baseline Array} (VLBA) to identify 4 DAGN candidates \cite{ke_gabanyi}. 
+
+\bigskip
+
+Dual AGNs have been described to be \textit{serendipitously} discovered by \textit{Satyapal} et. al \cite{satyapal} and \cite{jinny} due to their rare occurence in the universe. However, their study is important to understanding the growth of SMBHs as it is suggested that merger-triggered AGN may dominate SMBH growth (\textit{Hopkins} et. al. \cite{hopkins}). In the literature, galaxies with two nuclei separated at the order of kiloparsecs are known as Dual AGNs, whereas, the ones in which the separation is of the order of parsecs, they are called binary AGNS. The heirarchical model of structure formation predicts the formation of gravitationally bound binary AGNs, which were dual AGNs in previous stages of their lives. Accretion on the nuclei occurs in the late stage of the merger and is an important epoch in the galaxy evolution. Moreover, these galaxy merger events could ultimately give rise to black-hole merger events which are crucial to gravitational wave detection (\textit{Abbott} et. al. \cite{ligo}). Hence, studying dual AGNs will help in predicting the spatial distribution and frequency of such merger events.
+
+\bigskip
+
+There have been efforts towards studying individual DAGNs such as \textit{MRK 739} by \textit{Koss} \cite{koss_mrk739}, \textit{MRK 463} by \textit{Bianchi} \cite{bianchi} and \textit{ARP 299} by \textit{Ballo} \cite{ballo} among others. Hence, it is an extremely important task to increase the pool of DAGN candidates. In this paper, we have focused on detecting the presence of dual nuclei given a $40'' \times 40''$ r-band image of a galaxy.
+
+\section{Methods}
+
+Two variants of GBGA have been developed - \textit{Environment Threshold Search} (\textbf{ETS}) and \textit{Central Radial Search} (\textbf{CTS}). The former has been used to test on the random sample of galaxies from SDSS. The latter has essentially been developed, and fine-tuned, based on the Gimeno \cite{gimeno} catalog. Hence, \textbf{CTS} could be used as a secondary filtration step on the positive detections of \textbf{ETS} from a random sample.
+
+
+\bigskip
+
+As mentioned in \textit{Koss} et. al. \cite{koss_mrk739}, the spectra of \textit{MRK 739} is peaked at around 6750 Angstrom. Moreover, the SDSS telescope is known to be more sensitive in the R-band. This justifies our use of the R-band images in the algorithm.
+
+\bigskip
+
+The standard viewing span in SDSS's object explorer is $40''$. The physical distance spanned by this angular distance is such that the background universe could be considered homogeneous. Hence, a cut-out of $40''$ centred around the object is taken as the working image.
+
+\comment{
+\begin{enumerate}
+    \item There is a stray object (mostly a star) inside the cut-out of the galaxy. The star, in general, will be brighter than the galaxy and \textit{ETS} (described below) will detect the stray object as a single nuclei. To tackle this problem, we use the help of graph searching to identify the bright regions in the image. It is not necessary that the image contains a single bright region, and hence there might exist \textit{disconnected} regions. If the image does contain a stray object, we can identify the bright region it belongs to, and suitably exclude it from the peak search.
+    \item As a consequence to graph searching in \textit{ETS}, some galaxies which have their second nuclei near the edge of the cutout are reported as single nuclei, when infact they are DAGNs. This occurs because \textit{ETS} identifies it as a stray object mistakenly. \textit{CRS} rectifies this by essentially identifying bright regions relative to the centre, and hence if a peak does exist at the edge, it will not be treated as a stray object.
+\end{enumerate}
+}
+
+\bigskip
+
+\comment{
+The FITS file is ultimately a two dimensional array of pixel values. When a software, such as \textit{DS9}, is used to visualise a FITS file, or when images of galaxies are displayed in \textit{SDSS}, the entire image is log-scaled to be viewable by a human user. Hence, we log-normalise the cut-out image and subsequently use a Gaussian filter in it to remove random noise. After all of the processing, the image of the galaxy is well separated from the background, and the peak finding algorithm can run on it.
+
+\bigskip
+
+In order to find the peak, reporting the location of the maximum pixel value in the entire image is insufficient. It is not reliable, and moreover, the idea cannot be extended to identify two peaks. To overcome these issues, gradient ascent needs to be performed as it will identify points of zero gradient (with respect to pixel values). 
+}
+
+\subsection{Scaling and Smoothing}
+
+It is necessary to smooth to image to eliminate noise and introduce a contrast to the galaxy against the homogeneous background of the universe. The image is first logarithmically scaled to aid visualisation. On manual observation, it has been found that a flux value of 0.1 nannomaggies is a fair approximation of the noise level in R-band images. This value is important in the treatment of negative values of flux at certain pixels. Negative values are clearly unphysical, and solely a result of instrumentation error, and thus need to be taken care of as traditional image-processing modules cannot process negative values. Hence, a Gaussian transform has been applied only to the negative pixel values to convert them to positive. Subsequently, after smoothing is performed, such anomalous pixels are well integrated with their surrounding noise values.
+
+\bigskip
+
+\noindent
+The transformation applied to negative values is -
+
+$$\displaystyle{0.1 \times \exp\left({\frac{-x}{0.1}}}\right)^2$$ 
+
+\bigskip
+
+\noindent
+The logarithmic scaling function in \texttt{matplotlib} is explicitly called as -
+
+\noindent
+\texttt{ax.pcolormesh(X,Y,Z,norm=colors.LogNorm(vmin=0.1,vmax=Z.max()+5), cmap='gray')}
+
+\bigskip
+
+This colormap scales pixel values logarithmically that lie between \texttt{vmin} and \texttt{vmax}. The latter is set to the highest pixel value in the cut-out image (\texttt{Z.max}), added with 5. Images with a well-defined objects are virtually unaffected by this factor of 5 as their \texttt{Z.max()} value is already high enough. The generated cutout of such images is well-behaved as in figure (\ref{fig:ngc3758_unsmoothed}).
+
+\bigskip
+
+However, in a practical scenario, SDSS contains many misclassified object IDs that do not point to any object at all. Otherwise, they are centred on an empty region of the sky with no visible features. In such a scenario, \texttt{Z.min()} and \texttt{Z.max()} are close together and the log-normalisation behaves unpredictably. Thus, adding 5 to \texttt{Z.max()} essentially makes the intrinsic signal small in comparison to the \texttt{vmax} and the resultant image is plain black, as expected.
+
+
+\bigskip
+
+\begin{figure}[!htb]
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=5cm,height=5cm]{ngc3758_unsmoothed.png}
+        \caption{\textbf{Unsmoothed}}
+        \label{fig:ngc3758_unsmoothed}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=5cm,height=5cm]{ngc3758_smoothed.png}
+        \caption{\textbf{Smoothed}}
+        \label{fig:ngc3758_smoothed}
+    \end{subfigure}
+    
+    \caption{\textbf{NGC 3758}}
+    \label{fig:ngc3758}
+\end{figure}
+
+The figured (\ref{fig:ngc3758_smoothed}) was obtained after appropriate log-scaling and smoothing by a $7'' \times 7''$ Gaussian filter. The granularity of the figure has been removed, which makes it suitable for nuclei detection.
+
+\subsection{Generating Contour Map}
+
+The contour map is the key to the \textit{Graph-Boosted} aspect of \textbf{GBGA}. The \texttt{contourf} function of \texttt{matplotlib} discretizes the smoothed cut-out into a number of levels. For our purposes, the number of levels is set to 20. Level 1 refers to the lowest intensity level, and 20 to the highest. Figure (\ref{fig:contour_map}) contains 3 examples.
+
+\bigskip
+
+A \textit{high-contour-region} is defined as those set of points which lie above level 7. This number has been attained after fine-tuning the algorithm to maximize the accuracy on the Gimeno \cite{gimeno} catalog.
+
+\begin{figure}[!htb]
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=4cm,height=5cm]{ngc3758_contour.png}
+        \caption{\textbf{NGC 3758}}
+        \label{fig:ngc3758_contour}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=4cm,height=5cm]{ugc3141_contour.png}
+        \caption{\textbf{UGC 3141}}
+        \label{fig:ugc3141_contour}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=4cm,height=5cm]{mrk1431_contour.png}
+        \caption{\textbf{MRK 1431}}
+        \label{fig:mrk1431_contour}
+    \end{subfigure}
+    
+    \caption{\textbf{Contour Maps for 3 candidate DAGNs}}
+    \label{fig:contour_map}
+\end{figure}
+
+\comment{
+If we define a \textit{high contour region} as a connected region which contains points having a contour level greater than 7, then it can be observed that the nuclei of \textit{NGC 3758} lie well within one connected region. Similarly, the nuclei of \textit{UGC 3141} are marginally contained in the same connected region. However, in the case of \textit{MRK 789}, there is a stray object within the $40'' \times 40''$ cutout. This is reasonable anomaly as \textit{MRK 789} is at a higher redshift (0.050) than the other galaxies (0.020 and 0.040) respectively. The stray object (\textit{possibly a star}) has a higher intensity than the galaxy as a whole. Thus, the gradient ascent algorithm would naively, and mistakenly, report the stray star as a single bright peak. However, by observing that the stray object and the main galaxy lie in disconnected regions, we are able to disregard the stray object and constrain our search elsewhere.
+
+\bigskip
+
+Such anomalous cases motivate the imposition of connected components in both the \textbf{ETS} (\textit{section 5.1}) and \textbf{CRS} (\textit{section 5.2}) algorithm. Moreover, in \textbf{CRS} we further relax the condition of the environment contour level being pre-defined at $7$. The algorithm itself decides what the environment level should be based on the intensity distribution around the center of the image. Such an algorithm would prove more accurate in detecting true DAGNs such as \textit{UGC 3141}. The cutout of such a galaxy as one of its nuclei present at the edge of the image, which the \textbf{ETS} algorithm would fail to detect, due to its predefined environment level. In such a scenario, the \textbf{CRS} would successfully classify the galaxy as a true DAGN.
+}
+
+\subsection{Gradient Ascent}
+
+The heart of the peak detection algorithm lies in gradient ascent. It is used to find the global maxima of a convex objective function. In our case, our objective function is the pixel brightness value over a domain of two-dimensional grid points. At the neighborhood of the nuclei, the pixel value distribution is reasonably convex and gradient ascent will detect the peak accurately. The pseudocode is written in Algorithm (\ref{algo:grad_asc})
+
+\bigskip
+
+\begin{algorithm}[H]
+\SetAlgoLined
+ \DontPrintSemicolon
+  \SetKwFunction{FMain}{grad\_asc}
+  \SetKwProg{Fn}{Function}{:}{}
+  \Fn{\FMain{high-contour-region, init\_point}}{
+ P = init\_point \;
+ NewP = \textit{null}\;
+ \While{P != NewP}{
+  NewP = P \;
+  val = pixel value of P \;
+  neigh$\left[1...8\right]$ = array of neighboring points of P \;
+  i = index such that (Pixel value of neigh$\left[i\right]$ - val) is maximised \;
+  diff = Pixel value of neigh$\left[i\right]$ - val \;
+  
+  \pushline
+  \eIf{diff \leq 0}{
+   NewP = P \;
+   }{
+   NewP = neigh$\left[i\right]$ \;
+   }
+    }
+  }
+  \KwRet NewP\;
+ \caption{Gradient Ascent}
+ \label{algo:grad_asc}
+\end{algorithm}
+
+\bigskip
+
+Calling gradient ascent once or twice will not suffice however. This is because the cut-out galaxy image, even after smoothing, is replete with local optima. Hence, there is no guarantee that we will obtain the central peak (\textit{for negative samples}) or dual peaks (\textit{for positive samples}). Thus gradient ascent is called $500$ times for randomly initialised points and a list of the various peaks obtained. The size of this list ranges from 1-50 for different images. This list is further sorted in descending order of the intensity values of the peaks.
+
+\bigskip
+
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+  \SetKwFunction{FMain}{peak\_dist}
+  \SetKwProg{Fn}{Function}{:}{}
+  \Fn{\FMain{high\_contour\_region}}{
+ PeakList = \textit{empty array}
+ 
+ \For{$i = 1;\ i <= 500;\ i++$}{
+    P = random point in high\_contour\_region \;
+    peak = \texttt{grad\_asc}(high\_contour\_region, P) \;
+    \eIf{diff \leq 0}{
+   Append peak to PeakList$\left[\ \right]$ \;
+   }
+  }
+ \pushline
+ Sort PeakList$\left[\ \right]$ in descending order of pixel value \;
+  }
+  \KwRet PeakList$\left[\ \right]$ \;
+ \caption{Peak List}
+\end{algorithm}
+
+\bigskip
+
+\subsection{Connected Components}
+
+In a typical case, \texttt{peak\_dist} returns a list of more than 2 peaks in descending order of intensity. Since the objective of the algorithm is to detect double peaks, the first two entries of the array \texttt{PeakList} is reported as the two peaks of the double nuclei. The assumption inherent in this decision of the algorithm is that the underlying image is truly a double nuclei.
+
+\bigskip
+
+However, that is always not the case. It is necessary to impose other constraints to effectively report whether a galaxy truly contains a double nuclei. In the case of MRK 789 (figure \ref{fig:mrk789_contour}), the galaxy occupies the central region of the image. The intensity peak at the top left is a stray object, and it must not be reported as one of the double peaks. as it is unphysical. MRK 789 does not visibly have two peaks, and hence is a single nuclei.
+
+\bigskip
+
+The high contour region of a galaxy is not necessary a single connected region. For example, in \textit{MRK 789}, a stray object intrudes the field of vision and it has to be neglected. To eliminate such anomalous peaks, Depth-First-Search is done on the high contour regions to identify the disjoint components. The first two entries in the \textit{Peak List} are the brightest peaks as they have been already sorted. The pseudocode is as follows -
+
+\bigskip
+
+\begin{algorithm}[H]
+\SetAlgoLined
+ PeakList[   ] = \textbf{call} Peak List \;
+ Comps[   ] = \textbf{call} Depth-First-Search (High Contour Region) \;
+ p1 = PeakList[1] \;
+ p2 = PeakList[2] \;
+ c1 = Find component that contains p1 \;
+ c2 = Find component that contains p2 \;
+ 
+   \eIf{c1 == c2}
+   {
+   \textbf{Return} p1 and p2 \;
+   }
+   {
+        \uIf{c1.size > c2.size}
+        {
+            \textbf{Return} c1 \;
+        }
+        \uElseIf{c2.size > c1.size}
+        {
+            \textbf{Return} c2 \;
+        }
+        \Else
+        {
+            \textbf{Return} c1 and c2 \;
+        }
+   }
+ \newline
+ \caption{Peak Identifier}
+\end{algorithm}
+
+\section{Environment Threshold Search}
+
+\begin{figure}[!htb]
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=4cm,height=5cm]{mrk789_env_peaks.png}
+        \caption{MRK 789}
+        \label{fig:mrk789_env_peak}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=4cm,height=5cm]{mrk799_env_peaks.png}
+        \caption{MRK 799}
+        \label{fig:mrk799_env_peak}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=4cm,height=5cm]{ugc3141_env_peaks.png}
+        \caption{UGC 3141}
+        \label{fig:ugc3141_env_peak}
+    \end{subfigure}
+    
+    \caption{Peaks Detected using \textbf{ETS}}
+    \label{fig:ets_peaks}
+\end{figure}
+
+The blue color scheme has been used to better highlight the peaks. \textbf{ETS} performs well on anomalous cases such as \textit{MRK 789} which contains a stray object, and also \textit{MRK 799} which has its second nuclei at the edge of the image.
+
+\bigskip
+
+However, the algorithm fails on the galaxy \textit{UGC 3141}. On visual inspection, the two peaks clearly belong to the same galactic envelope, however the second nuclei is detected as a stray object, and thus neglected.
+
+\bigskip
+
+The failure occurs due to the environment level being predefined at 7. If it is possible to dynamically define the environment level for each galaxy, then galaxies such as \textit{UGC 3141} could be correctly identified. This exact problem is tackled in the \textbf{CRS} algorithm. 
+
+\section {Central Radial Search}
+
+\subsection {Search Radius}
+
+At first, it is important to exemplify the \textit{search radius} upon which the algorithm will work. Based on the average arc-second separation of the two nuclei, of all DAGNs mentioned earlier in this paper, we have used an search radius of 20 pixels. Starting from the centre of the cutout image, we enlist those contour levels that are found within a radial distance of 20 pixels from the centre. All points on the cutout, whose contour level belong in this list, form our subset of points in which we search for the peaks.
+
+\begin{figure}[t!]
+    \centering
+    \includegraphics[width=5cm,height=5cm]{ugc3141_mask.png}
+    \caption{Search Radius Area for UGC 3141}
+    \label{fig:ets_peaks}
+\end{figure}
+
+\bigskip
+
+It is important to note that the final subset of points will include the area of the search radius \textit{and} other points whose contour levels fall in range.
+
+\subsection {Edge Crowding}
+
+The change of the search-space leads to a possible crowding of peaks near stray objects. Since stray objects have higher apparent brightness than the galaxy, their core bright spot is excluded from the search space. However, the region just exterior to it monotonically increases in pixel value towards its centre, and this immediate exterior region is included in the search space. Due to the random initialisation of gradient ascent, there is a crowding of peaks near the jagged edges of stray objects. Such peaks also need to be neglected, which can be done if the \textit{Peak Identifier} algorithm is modified.
+
+\bigskip
+
+A function called \textbf{border\_problem\_decide} is defined, which inputs the galaxy image, a detected peak and outputs whether it is a peak that is crowding towards the edge of the search space. The first \textit{if} condition is expanded as follows -
+
+\begin{algorithm}[H]
+\SetAlgoLined
+ 
+   /* p1 is first peak */ \;
+   /* p2 is second peak */ \;
+   \eIf{c1 == c2}
+   {
+    \textbf{Boolean} bp1 = \textbf{call} border\_problem\_decide (p1) \;
+    \textbf{Boolean} bp2 = \textbf{call} border\_problem\_decide (p2) \;
+    
+    \uIf{\textbf{not} bp1 \textbf{and} bp2}
+        {
+            \textbf{Return} c1 \;
+        }
+        \uElseIf{\textbf{not} bp2 \textbf{and} bp1}
+        {
+            \textbf{Return} c2 \;
+        }
+        \Else
+        {
+            \textbf{Return} c1 and c2 \;
+        }
+   }
+ \newline
+ \caption{Peak Identifier}
+\end{algorithm}
+
+\subsection{Results}
+
+The images below show the improved peak detection by the \textit{CRS} algorithm. The error in \textit{UGC 3141} has been rectified and correctly detects the second peak. \textit{MRK 799} peaks do not change from \textit{ETS} result and \textit{NGC 3758} has been shown for reference.
+
+\begin{figure}[!b]
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=4cm,height=5cm]{ugc3141_centre_peaks.png}
+        \caption{UGC 3141}
+        \label{fig:ugc3141_centre_peaks}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=4cm,height=5cm]{mrk799_centre_peaks.png}
+        \caption{MRK 799}
+        \label{fig:mrk799_centre_peaks}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[h]{0.32\textwidth}
+        \includegraphics[width=4cm,height=5cm]{ngc3758_centre_peaks.png}
+        \caption{NGC 3758}
+        \label{fig:ngc3758_centre_peaka}
+    \end{subfigure}
+    
+    \caption{Peaks Detected using \textbf{CRS}}
+    \label{fig:crs_peaks}
+\end{figure}
+
+\comment{
+
+\section{Description of the Pipeline}
+
+We've developed a pipeline that processes a list of galaxies, and reports whether the galaxy contains a single nuclei or a double nuclei. The pipeline has been fully developed in Python and extensively uses the \textit{Astropy} and \textit{OpenCV} libraries. 
+
+\bigskip
+
+To demonstrate the functionality of the code, we will use four galaxies as references -
+
+\begin{itemize}
+    \item \textit{MRK 739} (also called \textit{NGC 3758})
+    \item \textit{MRK 799}
+    \item \textit{UGC 3141}
+    \item \textit{MRK 789}
+\end{itemize}
+
+\bigskip
+
+The running code processes an excel sheet of names of galaxies. For each entry in the sheet, the following process occurs -
+
+\begin{enumerate}
+    \item Attempt to locate the object in the SDSS catalog.
+    \item If it is found, download the FITS of the r-band of the frame in which the object is present. Also scrape the sexagesimal value of the object.
+    \item Create a $40'' \times 40''$ cut-out of the object centred around the sky coordinates.
+    \item Perform logarithmic scaling on the cut-out image to ease visualisation.
+    \item Apply a $7'' \times 7''$ Gaussian smoothing filter on the image.
+    \item Create a 20-level contour-map of the image thus generated.
+\end{enumerate}
+
+\bigskip
+
+After this stage, we have developed two algorithms to detect the double nuclei - Environment threshold search, Central radial search. We shall summarise each of them -
+
+\subsection{Environment Threshold Search (ETS)}
+
+\begin{enumerate}
+    \item Define contour level 7 as the threshold level. Any pixels on the contour map of the galaxy than have a level below this are not considered to be inside the envelope of the galaxy. Levels above 7 are said to be \textit{high} contour levels.
+    \item Find all the points in the smoothed image that belong to high contour levels.
+    \item Use graph searching (Depth-First-Search) to detect the connected components
+    \item Run gradient ascent for 500 epochs, randomly initialising the start point in a high region in each iteration.
+    \item Sort the 500 peaks in descending order of luminosity and pick the top two highest peaks.
+    \item Based on whether the two peaks lie in the same connected component or not, report the galaxy as a single or double nuclei galaxy.
+\end{enumerate}
+
+\subsection{Central Radial Search (CRS)}
+
+
+\begin{enumerate}
+    \item Locate the centre of the smoothed galaxy image.
+    \item Enlist all the contour levels that are encountered on scanning a radius of $20''$ from the centre.
+    \item Create a list of points whose contour level belongs to the previous list. Note that points in the search radius is a subset of this list.
+    \item Use graph searching (Depth-First-Search) to detect the connected components in the list of points.
+    \item Run gradient ascent for $500$ epochs, randomly choosing the start point from the list for each iteration.
+    \item Sort the $500$ peaks in descending order of luminosity and pick the top two highest peaks.
+    \item Based on whether the two peaks lie in the same connected component or not, report the galaxy as a single or double nuclei galaxy.
+\end{enumerate}
+}
+
+\section{Table of Results}
+
+Both the \textbf{ETS} and \textbf{CRS} have been run on the Gimeno catalog and the results are as follows. The galaxies detected as \textit{pair} by \textbf{ETS} are consistent with the results from \textbf{CRS}. However, almost all \textit{single} galaxies detected by \textbf{ETS} have been reclassified as double nuclei galaxies by \textbf{CRS}. 
+
+\begin{table}[!b]
+\parbox{.45\linewidth}{
+\centering
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{Galaxy} & \textbf{ETS} & \textbf{CRS} \\
+\hline
+MRK 544        & PAIR             & PAIR             \\
+MCG -1-1-65    & PAIR             & PAIR             \\
+MCG +01-02-017 & PAIR             & PAIR             \\
+MRK 553        & PAIR             & PAIR             \\
+MCG +01-02-045 & PAIR             & PAIR             \\
+MRK 365        & PAIR             & PAIR             \\
+MCG +05-06-015 & SINGLE           & PAIR             \\
+MCG +06-07-020 & PAIR             & PAIR             \\
+MRK 1066       & PAIR             & PAIR             \\
+MCG +00-08-069 & PAIR             & PAIR             \\
+UGC 3141       & SINGLE           & PAIR             \\
+
+MCG +10-12-147 & PAIR             & PAIR             \\
+MRK 19         & PAIR             & PAIR             \\
+MCG +06-21-031 & PAIR             & PAIR             \\
+MRK 116        & PAIR             & PAIR             \\
+MRK 22         & PAIR             & PAIR             \\
+NGC 3049       & PAIR             & PAIR             \\
+MRK 1431       & SINGLE           & SINGLE           \\
+MRK 147        & PAIR             & PAIR             \\
+MRK 35         & PAIR             & PAIR             \\
+MRK 153        & PAIR             & PAIR             \\
+MRK 729        & PAIR             & PAIR             \\
+MRK 38         & PAIR             & PAIR             \\
+NGC 3758       & PAIR             & PAIR             \\
+\hline
+\end{tabular}
+}
+\hfill
+\parbox{.45\linewidth}{
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{Galaxy} & \textbf{ETS} & \textbf{CRS} \\
+\hline
+
+MCG +09-20-076 & SINGLE           & PAIR             \\
+MCG +02-31-088 & PAIR             & PAIR             \\
+MCG +01-32-049 & PAIR             & PAIR             \\
+MRK 212        & PAIR             & PAIR             \\
+MCG +02-32-078 & PAIR             & PAIR             \\
+NGC 4509       & SINGLE           & PAIR             \\
+MRK 777        & PAIR             & PAIR             \\
+MRK 1307       & PAIR             & PAIR             \\
+MRK 1263       & PAIR             & PAIR             \\
+MRK 224        & PAIR             & PAIR             \\
+MRK 789        & SINGLE           & PAIR             \\
+MCG +10-19-089 & PAIR             & PAIR             \\
+NGC 5256       & PAIR             & PAIR             \\
+
+MCG +07-29-061 & PAIR             & PAIR             \\
+MCG +10-21-040 & SINGLE           & PAIR             \\
+MCG +08-30-019 & PAIR             & PAIR             \\
+MRK 1114       & PAIR             & PAIR             \\
+MCG +03-56-010 & PAIR             & PAIR             \\
+MRK 306        & PAIR             & PAIR             \\
+NGC 7468       & PAIR             & PAIR             \\
+MRK 930        & PAIR             & PAIR             \\
+MRK 1134       & PAIR             & PAIR             \\
+MRK 799        & PAIR             & PAIR            \\
+
+\hline
+
+\end{tabular}
+}
+
+\caption{Results from the \textit{Gimeno} catalog}
+\end{table}
+
+\newpage
+
+\section{Further Work Left to be Done}
+
+After the peaks have been detected, the pixel values at the peak have to be translated back to apparent magnitudes from the original FITS file. Thus, the ratio of apparent magnitues can be found, and subsequently the galaxy can be classified as a major/minor merger.
+
+\bigskip
+
+The algorithm has to be run on galaxies in those parts of the sky where DAGNs have not been previously reported. We expect to obtain positive results from the Stripe-82 region, However, prior to this, it is important to devise a metric that quantifies the confidence that a particular galaxy is a DAGN. Upon devising such a metric, and applying to previously unseen data, new galaxies can be added to the already growing pool of DAGN candidates.
+
+
+\section{Acknowledgements}
+We would like to thank the Science and Engineering research Board (SERB), Department of Science and Technology, Government of India, for supporting our research by providing us with resources to conduct our experiments. The project reference number is: EMR/2016/005687.
+
+
+\begin{thebibliography}{9}
+
+\bibitem{abazajian}
+Kevork N. Abazajian et. al.
+\textit{The Seventh Data Release of the Sloan Digital Sky Survey}
+
+\bibitem{gimeno}
+Germán N. Gimeno, Rubén J. Díaz, and Gustavo J. Carranza1.
+\textit{Catalog of Double Nucleus Galaxies}
+The Astronomical Journal, Volume 128, Number 1. (2004)
+ 
+\bibitem{mezcua} 
+Mezcua, M., Lobanov, A. P., Mediavilla, E., Karouzos, M.
+\textit{Photometric Decomposition of Mergers in Disk Galaxies}. 
+The Astrophysical Journal, Volume 784, Issue 1, article id. 16, 9 pp. (2014)
+
+\bibitem{koss_bat}
+Michael Koss1, Richard Mushotzky, Ezequiel Treister, Sylvain Veilleux, Ranjan Vasudevan, and Margaret Trippe
+\textit{Understanding Dual Active Galactic Nuclei Activation In The Nearby Universe} 
+The Astrophysical Journal Letters, Volume 746, Number 2. (2003)
+
+\bibitem{netzer}
+Netzer, H., Kollatschny, W., & Fricke, K. J.
+\textit{Study of multiple nucleus galaxies. II - MKN 739}
+Astronomy and Astrophysics (ISSN 0004-6361), vol. 171, no. 1-2, Jan. 1987, p. 41-48.
+
+\bibitem{koss_mrk739}
+Michael Koss, Richard Mushotzky, Ezequiel Treister, Sylvain Veilleux, Ranjan Vasudevan, Neal Miller, D. B. Sanders, Kevin Schawinski, Margaret Trippe
+\textit{Chandra Discovery of a Binary Active Galactic Nucleus in Mrk 739}
+The Astrophysical Journal Letters, Volume 735, Number 2. (2011)
+
+\bibitem{bertram}
+Bertram, T., Eckart, A., Fischer, S., Zuther, J., Straubmeier, C.,
+Wisotzki, L., & Krips, M. 2007, A&A, 470, 571
+\textit{Molecular gas in nearby low-luminosity QSO host galaxies}
+A&A Volume 470, Number 2, August I 2007
+
+\bibitem{davis}
+Davis, M., Efstathiou, G., Frenk, C. S., White, S. D. M.
+\textit{The evolution of large-scale structure in a universe dominated by cold dark matter}
+Astrophysical Journal, Part 1 (ISSN 0004-637X), vol. 292, May 15, 1985, p. 371-39
+
+\bibitem{springel}
+Springel, Volker; White, Simon D. M.; Jenkins, Adrian; Frenk, Carlos S.; Yoshida, Naoki; Gao, Liang; Navarro, Julio; Thacker, Robert; Croton, Darren; Helly, John; Peacock, John A.; Cole, Shaun; Thomas, Peter; Couchman, Hugh; Evrard, August; Colberg, Jörg; Pearce, Frazer
+\textit{Simulations of the formation, evolution and clustering of galaxies and quasars}
+Nature, Volume 435, Issue 7042, pp. 629-636 (2005)
+
+\bibitem{komossa_zensus}
+Komossa, S., & Zensus, J.
+\textit{Star Clusters and Black Holes in Galaxies across Cosmic Time}
+Star Clusters and Black Holes in Galaxies across Cosmic Time, Proceedings of the International Astronomical Union, IAU Symposium, Volume 312. (2016)
+
+\bibitem{xu_komossa}
+Xu, D., & Komossa, S
+\textit{Narrow Double-Peaked Emission Lines of SDSS J131642.90+175332.5: Signature of a Single or a Binary AGN in a Merger, Jet-Cloud Interaction, or Unusual Narrow-Line Region Geometry}
+The Astrophysical Journal Letters, Volume 705, Issue 1, pp. L20-L24 (2009). 
+
+\bibitem{ke_gabanyi}
+K. É. Gabányi1, T. An S. Frey, S. Komossa, Z. Paragi, X.Y. Hong, and Z.Q. Shen
+\textit{Four Dual AGN Candidates Obserevd With The VLBA}
+The Astrophysical Journal, Volume 826, Number 2. (2016)
+
+\bibitem{satyapal}
+Shobita Satyapal, Nathan J. Secrest, Claudio Ricc, Sara L. Ellison, Barry Rothberg, Laura Blecha, Anca Constantin, Mario Gliozzi, Paul McNulty, and Jason Ferguson
+\textit{Buried AGNs in Advanced Mergers: Mid-infrared Color Selection as a Dual AGN
+Candidate Finder}
+The Astrophysical Journal, Volume 848, Number 2. (2017)
+
+\bibitem{jinny}
+Jinyi Shangguan, Xin Liu, Luis C. Ho1, Yue Shen, Chien Y. Peng, Jenny E. Greene, and Michael A. Strauss
+\textit{Chandra X-Ray and Hubble Space Telescope Imaging of Optically Selected Kiloparsec-Scale Binary Active Galactic Nuclei. II. Host Galaxy Morphology and AGN Activity}
+The Astrophysical Journal, Volume 823, Number 1/. (2016)
+
+\bibitem{hopkins}
+Hopkins, Philip F.; Kocevski, Dale D.; Bundy, Kevin
+\textit{Do we expect most AGNs to live in discs?}
+Monthly Notices of the Royal Astronomical Society, Volume 445, Issue 1, p.823-834. (2014)
+
+\bibitem{ligo}
+B. P. Abbott et. al.
+\textit{Observation of Gravitational Waves from a Binary Black Hole Merger}
+Physical Review Letters. (2016)
+
+\bibitem{bianchi}
+Bianchi, Stefano; Chiaberge, Marco; Piconcelli, Enrico; Guainazzi, Matteo; Matt, Giorgio
+\textit{Chandra unveils a binary active galactic nucleus in Mrk 463}
+Monthly Notices of the Royal Astronomical Society, Volume 386, Issue 1, pp. 105-110. (2008)
+
+\bibitem{ballo}
+L. Ballo, V. Braito, R. Della Ceca, L. Maraschi, F. Tavecchio and M. Dadina
+\textit{Arp 299: A Second Merging System with Two Active Nuclei?}
+The Astrophysical Journal, 600:634-639, 2004 January 10
+
+
+\end{thebibliography}
+\end{document}

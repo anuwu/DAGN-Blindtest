@@ -21,21 +21,28 @@ from enum import Enum
 warnings.simplefilter('ignore', category=AstropyWarning)
 
 batchlog = log.getLogger (__name__)
-batchlog.setLevel(log.DEBUG)
-fileHandler = log.FileHandler("./galaxy.log")
+batchlog.setLevel(log.INFO)
+fileHandler = log.FileHandler("./galaxy.log", mode='w')
 fileHandler.setFormatter (log.Formatter ("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
-if not batchlog.handlers :
-    batchlog.addHandler(fileHandler)
+for h in batchlog.handlers :
+    batchlog.removeHandler (h)
+
+batchlog.addHandler(fileHandler)
+batchlog.info ("Welcome!")
 
 def setBatchLogger (batchName, batchPath) :
     fh = log.FileHandler(os.path.join(batchPath, "{}.log".format(batchName)))
-    fh.setFormatter (log.Formatter ("%(levelname)s : {} : %(asctime)s : %(message)s".format(batchName),
+    fh.setFormatter (log.Formatter ("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
                              datefmt='%m/%d/%Y %I:%M:%S %p'))
 
     for h in batchlog.handlers :
         batchlog.removeHandler (h)
     batchlog.addHandler (fh)
+    batchlog.info ("Logger (re)set!")
+
+    if os.path.exists ("./galaxy.log") :
+        os.remove ("./galaxy.log")
 
 
 class Galaxy () :
@@ -50,7 +57,7 @@ class Galaxy () :
 
     cannyLow = 25
     cannyHigh = 50
-    borderColor = (0, 0, 255)
+    cannyMarker = (0, 0, 255)
 
     def __init__ (self, objid, cood, fitsFold, bands='r') :
         """Simple constructor. Other attributes populated with methods"""
@@ -69,79 +76,117 @@ class Galaxy () :
             self.cutouts[b] = None
             self.gtype[b] = None
 
-        batchlog.info ("Initialised galaxy object {}".format(objid))
+        batchlog.info ("{} --> Initialised".format(self.objid))
 
     def getFitsPath (self, b) :
         return os.path.join (self.fitsFold, "{}-{}.fits".format(self.objid, b))
 
-    def download (self) :
-        """Downloads the frame for an object id"""
-
-        def getRepoLink (objid) :
-            link = "http://skyserver.sdss.org/dr14/en/tools/explore/summary.aspx?objid=" + objid
+    def getRepoLink (self) :
+        link = "http://skyserver.sdss.org/dr14/en/tools/explore/summary.aspx?objid=" + self.objid
+        batchlog.info ("{} --> Retrieving FITS repository link".format(self.objid))
+        try :
             soup = bs4.BeautifulSoup(requests.get(link).text, features='lxml')
+        except Exception as e :
+            batchlog.error("{} --> Error in obtaining repository link".format(self.objid))
+            raise e
 
-            # Condition for invalid link
-            if len(soup.select(".nodatafound")) == 1 :
-                return None
+        # Condition for invalid link
+        if len(soup.select(".nodatafound")) == 1 :
+            return None
 
-            tagType = type(
-                bs4.BeautifulSoup('<b class="boldest">Extremely bold</b>' , features = 'lxml').b
-            )
+        tagType = type(
+            bs4.BeautifulSoup('<b class="boldest">Extremely bold</b>' , features = 'lxml').b
+        )
 
-            for c in soup.select('.s') :
-                tag = c.contents[0]
-                if tagType == type(tag) and (fitsLinkTag:=str(tag)).find('Get FITS') > -1 :
-                    break
+        for c in soup.select('.s') :
+            tag = c.contents[0]
+            if tagType == type(tag) and (fitsLinkTag:=str(tag)).find('Get FITS') > -1 :
+                break
 
-            fitsLinkTag = fitsLinkTag[fitsLinkTag.find('"')+1:]
-            fitsLinkTag = fitsLinkTag[:fitsLinkTag.find('"')].replace("amp;",'')
-            return "http://skyserver.sdss.org/dr15/en/tools/explore/" + fitsLinkTag
+        fitsLinkTag = fitsLinkTag[fitsLinkTag.find('"')+1:]
+        fitsLinkTag = fitsLinkTag[:fitsLinkTag.find('"')].replace("amp;",'')
+        return "http://skyserver.sdss.org/dr15/en/tools/explore/" + fitsLinkTag
 
-        def getBandLinks (repoLink) :
-            def procClass (st) :
-                st = st[st.find('href='):]
-                st = st[st.find('"')+1:]
-                return st[:st.find('"')]
+    def getBandLinks (self) :
+        def procClass (st) :
+            st = st[st.find('href='):]
+            st = st[st.find('"')+1:]
+            return st[:st.find('"')]
 
-            return {(lambda s: s[s.rfind('/') + 7])(procClass(str(x))) : procClass(str(x))
+        batchlog.info("{} --> Retrieving band links".format(self.objid))
+        try :
+            dlinks = {(lambda s: s[s.rfind('/') + 7])(procClass(str(x))) : procClass(str(x))
             for x in
-            bs4.BeautifulSoup(requests.get(repoLink).text, features = 'lxml').select(".l")[0:5]
+            bs4.BeautifulSoup(requests.get(self.repoLink).text, features = 'lxml').select(".l")[0:5]
             }
+        except Exception as e :
+            batchlog.error("{} --> Error in obtaining band download links".format(self.objid))
+            raise e
 
-        def downloadExtract (b, dlink, fitsFold, fitsPath) :
-            dPath = os.path.join(fitsFold, dlink[dlink.rfind('/')+1:])
+        return dlinks
+
+    def downloadExtract (self, b, dlink) :
+        dPath = os.path.join(self.fitsFold, dlink[dlink.rfind('/')+1:])
+        batchlog.info ("{} --> Downloading bz2 for {} band".format(self.objid, b))
+        try :
             urllib.request.urlretrieve(dlink, dPath)
+        except Exception as e :
+            batchlog.error("{} --> Error in obtaining .bz2 for {} band. Moving onto next object".format(self.objid, b))
+            raise e
+
+        batchlog.info("{} --> .bz2 for {} band obtained successfully".format(self.objid, b))
+        batchlog.info("{} --> Extracting .bz2 for {} band".format(self.objid, b))
+        try :
             zipf = bz2.BZ2File(dPath)
             data = zipf.read()
             zipf.close()
             extractPath = dPath[:-4]
             open(extractPath, 'wb').write(data) ;
-            os.rename(extractPath, fitsPath)
+            os.rename(extractPath, self.getFitsPath(b))
             os.remove(dPath)
+        except Exception as e :
+            batchlog.error("{} --> Error in extraction of .bz2 for {} band. Moving onto next object".format(self.objid, b))
+            raise e
 
-        allDown = True
-        for b in self.bands :
-            if not os.path.exists (self.getFitsPath(b)) :
-                allDown = False
+    def download (self) :
+        """Downloads the frame for an object id"""
 
-        if allDown :
+        toDown = [b for b in self.bands if b in "ugriz" and not os.path.exists(self.getFitsPath(b))]
+        if not toDown :
+            batchlog.info ("{} --> FITS files of all bands already downloaded".format(self.objid))
             return
+
+        batchlog.info ("{} --> FITS bands to be downloaded - {}".format(self.objid, toDown))
         if self.repoLink is None :
-            self.repoLink = getRepoLink(self.objid)
+            self.repoLink = self.getRepoLink()
             if self.repoLink is None :
-                self.gtype = {b : GalType.INVALID_OBJID for b in self.bands}
+                self.gtype = {b : GalType.INVALID_OBJID for b in self.bands if b in "ugriz"}
+                batchlog.info("{} --> Setting gtype to INVALID_OBJID".format(self.objid))
                 return
+            batchlog.info("{} --> FITS repository link successfully retrieved".format(self.objid))
+        else :
+            batchlog.info("{} --> FITS repository link already exists".format(self.objid))
+
         if not self.downLinks :
-            self.downLinks = getBandLinks(self.repoLink)
+            self.downLinks = self.getBandLinks()
+            batchlog.info("{} --> FITS bands download links retrieved".format(self.objid))
+        else :
+            batchlog.info("{} --> FITS bands download links already exist".format(self.objid))
 
         for b, dlink in self.downLinks.items() :
-            if b in self.bands and not os.path.exists (p:=self.getFitsPath(b)) :
-                downloadExtract (b, dlink, self.fitsFold, p)
+            if b in self.bands and b in "ugriz" :
+                if not os.path.exists (self.getFitsPath(b)) :
+                    self.downloadExtract (b, dlink)
+                    batchlog.info("{} --> Downloaded and extracted FITS file for {}-band".format(self.objid, b))
+                else :
+                    batchlog.info("{} --> FITS file for {}-band already exists".format(self.objid, b))
 
     def cutout (self, rad=40) :
         def cutout_b (fitsPath) :
             nonlocal rad
+
+            if not os.path.exists (fitsPath) :
+                return None
 
             hdu = fits.open (fitsPath, memmap=False)[0]
             wcs = WCS(hdu.header)
@@ -152,9 +197,8 @@ class Galaxy () :
 
 
         for b in self.bands :
-            if self.cutouts[b] is None :
+            if b in "ugriz" and self.cutouts[b] is None :
                 self.cutouts[b] = cutout_b (self.getFitsPath(b))
-
 
     def smooth (self, reduc=2, sgx=5, sgy=5) :
         def smooth_b (img) :
@@ -191,7 +235,7 @@ class Galaxy () :
                                                                             Galaxy.cannyLow,
                                                                             Galaxy.cannyHigh),
                                                             axis=1))],
-                                       0, Galaxy.borderColor, 1, 8)
+                                       0, Galaxy.cannyMarker, 1, 8)
 
             return None if fullImg is None\
             else (lambda f, uq : np.array([
@@ -203,7 +247,7 @@ class Galaxy () :
                             else f[uq[i]:uq[i+1],1])
                                         ])
             )(*(lambda f : (f, np.unique(f[:,0], True)[1]))\
-                (np.argwhere((fullImg == np.array(Galaxy.borderColor)).all(axis=2))))
+                (np.argwhere((fullImg == np.array(Galaxy.cannyMarker)).all(axis=2))))
 
 
         for b, img in self.imgs.items() :
@@ -243,10 +287,7 @@ class Galaxy () :
             return OrderedDict (sorted (peaks.items(), key=lambda x:x[1][0], reverse=True))
 
         for b in self.bands :
-            self.peaks[b] = None
-            if (img:=self.imgs[b]) is not None and (reg:=self.hullReg[b]) is not None :
-                self.peaks[b] = gradAsc_b(self.hullReg[b], lambda x:img[x])
-
-    def markPeaks (self) :
-        for b, peaks in self.peaks.items() :
-            peaks = self.peaks[b]
+            if b in "ugriz" :
+                self.peaks[b] = None
+                if (img:=self.imgs[b]) is not None and (reg:=self.hullReg[b]) is not None :
+                    self.peaks[b] = gradAsc_b(self.hullReg[b], lambda x:img[x])

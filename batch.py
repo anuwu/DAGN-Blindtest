@@ -38,70 +38,6 @@ def logFixFmt (fix, k=50) :
     """Formats error messages for the run logger"""
     return  2*(k*"#" + '\n') + txwr(width=k).fill(text=fix) + '\n' + 2*(k*"#" + '\n')
 
-def runPrelude (batchName, csv) :
-    """Sets up files and folders and checks for existence of
-    folder indicated by 'batchName' and the 'csv' filename"""
-
-    # To access fileHandler of the logger
-    global fileHandler
-    fileHandler.setFormatter (log.Formatter ("%(levelname)s : RUN_INIT : %(asctime)s : %(message)s",
-                         datefmt='%m/%d/%Y %I:%M:%S %p'))
-
-    # Checks if the /Data directory has been created at the root directory
-    runlog.info("Entering prelude to create new batch!")
-    if not os.path.isdir("Data") :
-        runlog.critical("Data folder not found!\n\n{}".format(logFixFmt(
-            "Please create a folder named 'Data' in the notebook directory and rerun!"
-        )))
-        raise FileNotFoundError
-
-    # Checks if batchName folder exists in /Data
-    batchPath = "Data/{}".format(batchName)
-    if not os.path.isdir (batchPath) :
-        runlog.critical("Batch folder not found\n\n{}".format(logFixFmt(
-            "Please create a folder for the batch at '{}' and rerun!".format(batchPath)
-        )))
-        raise FileNotFoundError
-
-    ######################################################################
-    # Checks if the .csv file exists. If the 'csv' argument is None, the
-    # name of the .csv file is taken to be the same name as its containing
-    # folder
-    ######################################################################
-    csvName = batchName if csv is None else csv
-    csvPath = batchPath + "/{}".format(csvName + ".csv")
-    if not os.path.exists (csvPath) :
-        runlog.critical("Batch .csv file at path '{}' not found\n\n{}".format(batchPath, logFixFmt(
-            "Please supply the name of the appropriate .csv file and rerun!"
-        )))
-        raise FileNotFoundError
-
-    # Changing name of the run log fileHandler to reflect the batch it is
-    # presently handling
-    runlog.info("Changing log format to handle batch '{}'".format(batchName))
-    fileHandler.setFormatter (log.Formatter ("%(levelname)s : {} : %(asctime)s : %(message)s".format(batchName),
-                     datefmt='%m/%d/%Y %I:%M:%S %p'))
-
-    # Ensures only one fileHandler exists
-    for h in runlog.handlers :
-        runlog.removeHandler(h)
-
-    runlog.addHandler(fileHandler)
-
-    ######################################################################
-    # Creates a /FITS folder in the batch folder where all the FITS files will
-    # be stored
-    ######################################################################
-    fitsPath = os.path.join (batchPath, "FITS")
-    if not os.path.exists (fitsPath) :
-        os.mkdir (fitsPath)
-        runlog.info("Created FITS folder for batch")
-    else :
-        runlog.info("FITS folder for the batch already exists")
-
-    runlog.info("Successfully created environment for batch\n\nMonitoring...")
-    return csvPath
-
 class Batch () :
     """Class that defines a batch of SDSS objIDs on which classifcation is to be performed"""
 
@@ -119,6 +55,70 @@ class Batch () :
             batch = None
         finally :
             return batch
+
+    def runPrelude (batchName, csv) :
+        """Sets up files and folders and checks for existence of
+        folder indicated by 'batchName' and the 'csv' filename"""
+
+        # To access fileHandler of the logger
+        global fileHandler
+        fileHandler.setFormatter (log.Formatter ("%(levelname)s : RUN_INIT : %(asctime)s : %(message)s",
+                             datefmt='%m/%d/%Y %I:%M:%S %p'))
+
+        # Checks if the /Data directory has been created at the root directory
+        runlog.info("Entering prelude to create new batch!")
+        if not os.path.isdir("Data") :
+            runlog.critical("Data folder not found!\n\n{}".format(logFixFmt(
+                "Please create a folder named 'Data' in the notebook directory and rerun!"
+            )))
+            raise FileNotFoundError
+
+        # Checks if batchName folder exists in /Data
+        batchPath = "Data/{}".format(batchName)
+        if not os.path.isdir (batchPath) :
+            runlog.critical("Batch folder not found\n\n{}".format(logFixFmt(
+                "Please create a folder for the batch at '{}' and rerun!".format(batchPath)
+            )))
+            raise FileNotFoundError
+
+        ######################################################################
+        # Checks if the .csv file exists. If the 'csv' argument is None, the
+        # name of the .csv file is taken to be the same name as its containing
+        # folder
+        ######################################################################
+        csvName = batchName if csv is None else csv
+        csvPath = batchPath + "/{}".format(csvName + ".csv")
+        if not os.path.exists (csvPath) :
+            runlog.critical("Batch .csv file at path '{}' not found\n\n{}".format(batchPath, logFixFmt(
+                "Please supply the name of the appropriate .csv file and rerun!"
+            )))
+            raise FileNotFoundError
+
+        # Changing name of the run log fileHandler to reflect the batch it is
+        # presently handling
+        runlog.info("Changing log format to handle batch '{}'".format(batchName))
+        fileHandler.setFormatter (log.Formatter ("%(levelname)s : {} : %(asctime)s : %(message)s".format(batchName),
+                         datefmt='%m/%d/%Y %I:%M:%S %p'))
+
+        # Ensures only one fileHandler exists
+        for h in runlog.handlers :
+            runlog.removeHandler(h)
+
+        runlog.addHandler(fileHandler)
+
+        ######################################################################
+        # Creates a /FITS folder in the batch folder where all the FITS files will
+        # be stored
+        ######################################################################
+        fitsPath = os.path.join (batchPath, "FITS")
+        if not os.path.exists (fitsPath) :
+            os.mkdir (fitsPath)
+            runlog.info("Created FITS folder for batch")
+        else :
+            runlog.info("FITS folder for the batch already exists")
+
+        runlog.info("Successfully created environment for batch\n\nMonitoring...")
+        return csvPath
 
     def __init__ (self, batchName, bands='r', rad=40, csv=None) :
         """Constructor for the batch. Fills galaxy dictionary"""
@@ -141,7 +141,7 @@ class Batch () :
 
         self.batchName = batchName
         self.bands = bands
-        self.csvPath = runPrelude (batchName, csv)
+        self.csvPath = Batch.runPrelude (batchName, csv)
         try :
             df = pd.read_csv(self.csvPath, dtype=object, usecols=["objID", "ra", "dec"])
         except ValueError as e :
@@ -205,7 +205,7 @@ class Batch () :
 
         runlog.info ("Processing currently monitoring batch")
         # Looping through galaxy objects
-        for objid, g in self.galaxies :
+        for g in self.galaxies :
             g.cutout()
             g.smooth()
             g.hullRegion()

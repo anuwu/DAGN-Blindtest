@@ -55,15 +55,6 @@ def setBatchLogger (batchName, batchPath) :
     if os.path.exists ("./galaxy.log") :
         os.remove ("./galaxy.log")
 
-def toThreeChannel (im1) :
-    """ Takes a single channel grayscale image and
-    converts it to 3 channel grayscale"""
-
-    im3 = np.empty (im1.shape + (3, ), dtype=np.uint8)
-    for i in [0, 1, 2] :
-        im3[:,:,i] = im1
-    return im3
-
 class Galaxy () :
     """Contains all of the galaxies info"""
 
@@ -86,6 +77,15 @@ class Galaxy () :
     cannyLow = 25
     cannyHigh = 50
     hullMarker = (0, 0, 255)
+
+    def toThreeChannel (im1) :
+        """ Takes a single channel grayscale image and
+        converts it to 3 channel grayscale"""
+
+        im3 = np.empty (im1.shape + (3, ), dtype=np.uint8)
+        for i in [0, 1, 2] :
+            im3[:,:,i] = im1
+        return im3
 
     def __init__ (self, objid, cood, fitsFold, bands='r') :
         """Constructor for the galaxy object
@@ -362,7 +362,7 @@ class Galaxy () :
             # Step 2a
             cannyHull = [cv2.convexHull(np.flip(cannyEdges, axis=1))]
             # Step 2b
-            fullImg = cv2.drawContours (toThreeChannel(np.copy(img)),
+            fullImg = cv2.drawContours (Galaxy.toThreeChannel(np.copy(img)),
                                     cannyHull,
                                     0, Galaxy.hullMarker, 1, 8)
             # Step 2c

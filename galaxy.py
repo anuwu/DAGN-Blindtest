@@ -6,6 +6,7 @@ import bz2
 import warnings
 import numpy as np
 import cv2
+import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import logging as log
 
@@ -35,26 +36,6 @@ for h in batchlog.handlers :
 batchlog.addHandler(fileHandler)
 batchlog.info ("Welcome!")
 
-def setBatchLogger (batchName, batchPath) :
-    """Called upon by Batch object to set the correct fileHandler location
-    for the batch of galaxies that will be processsed. Also deletes the
-    default logger if it exists"""
-
-    fh = log.FileHandler(os.path.join(batchPath, "{}.log".format(batchName)))
-    fh.setFormatter (log.Formatter ("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
-                             datefmt='%m/%d/%Y %I:%M:%S %p'))
-
-    # Ensuring only one fileHandler is associated with the batch logger
-    for h in batchlog.handlers :
-        batchlog.removeHandler (h)
-
-    batchlog.addHandler (fh)
-    batchlog.info ("Logger (re)set!")
-
-    # Removing the default logger if it exists
-    if os.path.exists ("./galaxy.log") :
-        os.remove ("./galaxy.log")
-
 class Galaxy () :
     """Contains all of the galaxies info"""
 
@@ -78,14 +59,23 @@ class Galaxy () :
     cannyHigh = 50
     hullMarker = (0, 0, 255)
 
+    # Color for marking the peaks found by gradient ascent
+    peakMarker = (255, 0, 0)
+
     def toThreeChannel (im1) :
         """ Takes a single channel grayscale image and
         converts it to 3 channel grayscale"""
 
         im3 = np.empty (im1.shape + (3, ), dtype=np.uint8)
         for i in [0, 1, 2] :
-            im3[:,:,i] = im1
+            im3[:,:,i] = np.copy(im1)
         return im3
+
+    def stripDict (dic, bands) :
+        """ Takes a dictionary attribute of a galaxy object and
+        strips it down to contain contain keys in argument 'bands'"""
+
+        return {b:_ for b,_ in dic.items() if b in bands}
 
     def __init__ (self, objid, cood, fitsFold, bands='r') :
         """Constructor for the galaxy object
@@ -103,10 +93,10 @@ class Galaxy () :
         # Initialising dictionaries to None
         (self.downLinks,
         self.cutouts,
-        self.noise,
+        self.noises,
         self.imgs,
         self.hullInds,
-        self.hullReg,
+        self.hullRegs,
         self.peaks,
         self.gtype) = {}, {}, {}, {}, {}, {}, {}, {}
 
@@ -120,6 +110,10 @@ class Galaxy () :
             self.gtype[b] = None
 
         batchlog.info ("{} --> Initialised".format(self.objid))
+
+    def __str__ (self) :
+        """Galaxy object to string"""
+        return self.objid
 
     def getFitsPath (self, b) :
         """ Helper function for an object that returns the FITS file path
@@ -247,9 +241,9 @@ class Galaxy () :
         """Performs a cutout centred at attribute 'cood' for radius 'rad'
         for all bands"""
 
-        def cutout_b (fitsPath) :
-            """ Helper function that performs cutout for a band"""
-            nonlocal rad
+        def cutout_b (fitsPath, rad) :
+            """ Helper function that performs cutout for a band
+            for a given radius in argument 'rad'"""
 
             # In case the FITS file was not downloaded due to any error
             if not os.path.exists (fitsPath) :
@@ -270,7 +264,7 @@ class Galaxy () :
             # still None as I/O is costly
             ######################################################################
             if b in "ugriz" and self.cutouts[b] is None :
-                self.cutouts[b] = cutout_b (self.getFitsPath(b))
+                self.cutouts[b] = cutout_b (self.getFitsPath(b), rad)
             batchlog.info("{} --> Got cutout for {}-band".format(self.objid, b))
 
     def smooth (self, reduc=2, sgx=5, sgy=5) :
@@ -300,8 +294,9 @@ class Galaxy () :
                 -> Helps to smoothen masked points
         """
 
-        def smooth_b (img) :
-            nonlocal reduc, sgx, sgy
+        def smooth_b (img, reduc, sgx, sgy) :
+            """Helper function for that performs smoothening for a given
+            band. Arguments are described in enclosing method"""
 
             # Step 1
             img[img < 0] = 0
@@ -324,7 +319,7 @@ class Galaxy () :
 
         # Looping over bands
         for b, cut in self.cutouts.items() :
-            self.imgs[b] = smooth_b(np.copy(cut))
+            self.imgs[b] = smooth_b(np.copy(cut), reduc, sgx, sgy)
             batchlog.info("{} --> Smoothened {}-band".format(self.objid, b))
 
     def hullRegion (self) :
@@ -362,14 +357,14 @@ class Galaxy () :
             # Step 2a
             cannyHull = [cv2.convexHull(np.flip(cannyEdges, axis=1))]
             # Step 2b
-            fullImg = cv2.drawContours (Galaxy.toThreeChannel(np.copy(img)),
+            fullImg = cv2.drawContours (Galaxy.toThreeChannel(img),
                                     cannyHull,
                                     0, Galaxy.hullMarker, 1, 8)
             # Step 2c
             hullInds = np.argwhere((fullImg == np.array(Galaxy.hullMarker)).all(axis=2))
 
             # Step 3
-            hullReg = (lambda f, uq : np.array([
+            hullRegs = (lambda f, uq : np.array([
                 [f[uq[i],0],y]
                 for i in range(0, len(uq))
                     for y in (lambda ys:np.setdiff1d(range(np.min(ys), np.max(ys)+1), ys))\
@@ -380,11 +375,11 @@ class Galaxy () :
             )(*(lambda f : (f, np.unique(f[:,0], True)[1]))\
                 (hullInds))
 
-            return hullInds, hullReg
+            return hullInds, hullRegs
 
         # Looping over bands
         for b, img in self.imgs.items() :
-            self.hullInds[b], self.hullReg[b] = (None, None) if img is None else hullRegion_b(img)
+            self.hullInds[b], self.hullRegs[b] = (None, None) if img is None else hullRegion_b(img)
             batchlog.info("{} --> Obtained hull boundary and region for {}-band".format(self.objid, b))
 
     def gradAsc (self, reduc=100, tol=3) :
@@ -484,6 +479,91 @@ class Galaxy () :
         # Looping over bands
         for b in self.bands :
             if b in "ugriz" :
-                if (img:=self.imgs[b]) is not None and (reg:=self.hullReg[b]) is not None :
-                    self.peaks[b] = gradAsc_b(self.hullReg[b], lambda x:img[x])
+                if (img:=self.imgs[b]) is not None and (reg:=self.hullRegs[b]) is not None :
+                    self.peaks[b] = gradAsc_b(self.hullRegs[b], lambda x:img[x])
                 batchlog.info("{} --> Found peak list for {}-band".format(self.objid, b))
+
+    def getSmoothed (self, bands, triple=False, asDict=False) :
+        """ Returns a copy of the smoothed image of the specified band(s)
+        If asDict is set,
+            then images are returned as a dictionary
+        Else,
+            it's returned as a dictonary only if there are multiple bands
+            otherwise,
+                the image of the band is returned
+
+        Additionally, if triple is set, then it is the three-channel copy of
+        the image that is returned"""
+
+        imgs = {b:Galaxy.toThreeChannel(img) if triple
+            else np.copy(img)
+            for b, img in Galaxy.stripDict(self.imgs, bands).items()}
+
+        return imgs if asDict or len(bands) > 1 else imgs[bands]
+
+    def getHullMarked (self, bands, asDict=False) :
+        """ Returns a copy of the smoothed image of the specified band(s) with hull marked
+        If asDict is set,
+            then images are returned as a dictionary
+        Else,
+            it's returned as a dictonary only if there are multiple bands
+            otherwise,
+                the image of the band is returned"""
+
+        hullMarks = self.getSmoothed (bands, True, True)
+        for b, hi in Galaxy.stripDict(self.hullInds, bands).items() :
+            hullMarks[b][(lambda x : (x[:,0], x[:,1]))(hi)] = np.array(Galaxy.hullMarker)
+
+        return hullMarks if asDict or len(bands) > 1 else hullMarks[bands]
+
+    def getPeakMarked (self, bands, hull=False, asDict=False) :
+        """ Returns a copy of the smoothed image of the specified band(s) with peaks marked
+        If asDict is set,
+            then images are returned as a dictionary
+        Else,
+            it's returned as a dictonary only if there are multiple bands
+            otherwise,
+                the image of the band is returned
+
+        Additionally, if hull is set, then the hull is marked as well"""
+
+        peakMarks = self.getHullMarked(bands, True) if hull else self.getSmoothed(bands, True, True)
+        for b,pks in Galaxy.stripDict(self.peaks, bands).items() :
+            for pk in pks :
+                peakMarks[b][pk] = np.array(Galaxy.peakMarker)
+
+        return peakMarks if asDict or len(bands) > 1 else peakMarks[bands]
+
+    def getSmoothHistogram (self, bands, asDict=False) :
+        """ Returns histogram of smoothed image of the specified band(s)
+        If asDict is set,
+            then images are returned as a dictionary
+        Else,
+            it's returned as a dictonary only if there are multiple bands
+            otherwise,
+                the image of the band is returned"""
+
+        smHists = {b:lambda:plt.hist(img.flatten(), bins=100)
+            for b,img in Galaxy.stripDict(self.imgs, bands).items()}
+
+        return smHists if asDict or len(bands) > 1 else smHists[bands]
+
+    def getRegHistogram (self, bands, asDict=False) :
+        """ Returns histogram of the hull region of the specified band(s)
+        If asDict is set,
+            then images are returned as a dictionary
+        Else,
+            it's returned as a dictonary only if there are multiple bands
+            otherwise,
+                the image of the band is returned"""
+
+        regHists = {
+                b:lambda:plt.hist(reg, bins=100)
+                for b,reg in {
+                    b:img[(lambda x : (x[:,0], x[:,1]))(self.hullRegs[b])]
+                    for b,img in
+                        self.getSmoothed (bands, False, True).items()
+                }.items()
+            }
+
+        return regHists if asDict or len(bands) > 1 else regHists[bands]

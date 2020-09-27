@@ -252,14 +252,24 @@ class Batch () :
         (lambda d : os.mkdir(d) if not os.path.isdir(d) else None)\
         (diagPath:=os.path.join(self.batchFold, "Proc-Diag"))
 
+        isPointIn = lambda pt, reg : (pt == reg).all(axis=1).any()
+
         runlog.info ("Diagnosing currently monitoring batch")
         for g in self.galaxies :
-            # Hull
-            for b, phm in g.getHullMarked().items() :
-                svimg = Image.fromarray(phm.astype(np.uint8))
+            for b in self.bands :
+                if g.cutouts[b] is None or\
+                not g.imgs[b].size or\
+                not g.hullInds[b].size or\
+                not g.hullRegs[b].size or\
+                not isPointIn (np.array([g.imgs[b].shape[0]//2, g.imgs[b].shape[1]//2]), g.hullRegs[b]) or\
+                100*(g.imgs[b].flatten().shape[0] - g.hullRegs[b].shape[0])\
+                /g.imgs[b].flatten().shape[0] < 10 :
+                    continue
+
+                # Hull
+                svimg = Image.fromarray(g.getHullMarked(b).astype(np.uint8))
                 svimg.save(os.path.join(diagPath, "{}-{}_hull.png".format(g.objid, b)))
 
-            for b in self.bands :
                 # Histogram of smoothed frequency list
                 plt.plot (np.arange(0, 256, 1), g.freqSmooth[b])
                 plt.savefig (os.path.join(diagPath, "{}-{}_smoothHist.png".format(g.objid, b)))

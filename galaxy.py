@@ -100,11 +100,11 @@ class Galaxy () :
             fitsFold    - Directory for FITS files  (Supplied by Batch object)
             bands       - Which bands for object    (Supplied by Batch object) """
 
-        self.objid = objid
-        self.bands = bands
-        self.cood = cood
-        self.fitsFold = fitsFold
-        self.repoLink = None
+        (self.objid,
+        self.bands,
+        self.cood,
+        self.fitsFold,
+        self.repoLink) = objid, bands, cood, fitsFold, None
 
         # Initialising dictionaries to None
         (self.downLinks,

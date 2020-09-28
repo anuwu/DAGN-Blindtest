@@ -17,6 +17,7 @@ from astropy.coordinates import SkyCoord, Angle
 from astropy import units as u
 from astropy.utils.exceptions import AstropyWarning
 from collections import OrderedDict
+from scipy.optimize import curve_fit
 from enum import Enum
 
 # Removes the 'RADECSYS deprecated' warning from astropy cutout
@@ -42,24 +43,29 @@ class Galaxy () :
     class GalType (Enum) :
         """Enum for the final verdict of a galaxy
             INVALID_OBJID       - Self explanatory
-            NO_NOISE            - Noise level could not be reasonably found from the cutout
-            NO_CENTRE           - Centre of the cutout was not inside the hull region
+            FILTERED            - Filtered by the filtration condition
             NO_PEAK             - Gradient ascent did not return any peaks
             SINGLE              - Single nuclei galaxy
             DOUBLE              - Double nuclei galaxy """
         (INVALID_OBJID,
-         NO_NOISE,
-         NO_CENTRE,
-         NO_PEAK,
-         SINGLE,
-         DOUBLE) = tuple(range(6))
+        FILTERED,
+        NO_PEAK,
+        SINGLE,
+        DOUBLE) = tuple(range(5))
 
     # Parameters for canny
     cannyLow = 25
     cannyHigh = 50
+
+    # Color for marking the hull
     hullMarker = (0, 0, 255)
     # Color for marking the peaks found by gradient ascent
     peakMarker = (255, 0, 0)
+    # Color for marking signal region in hull
+    signalMarker = (64, 224, 208)
+
+    # Empty (0,) numpy array
+    emptyArray = lambda : np.array([])
     # Empty (0,2) numpy array
     __emptyArray2D__ = lambda : np.array([]).reshape(-1, 2)
     # Empty 2-D image
@@ -68,11 +74,21 @@ class Galaxy () :
     emptyInds = lambda : Galaxy.__emptyArray2D__()
     # Empty list of peaks
     emptyPeaks = lambda : OrderedDict({})
-    # Empty series of pixels
-    emptySeries = lambda : np.array ([])
+
     # Two dimensional indexer
     twoDIndexer = lambda x : (lambda f : (f(x[:,0]), f(x[:,1])))\
                             (lambda y : [] if not y.size else y)
+    # Check if point is in a region
+    isPointIn = lambda pt, reg : (pt == reg).all(axis=1).any()
+    ######################################################################
+    # Returns the 7x7 neighborhood centred around a pixel
+    # Any neighborhood point that falls outside the search region is
+    # discarded
+    ######################################################################
+    tolNeighs = lambda pt, reg, t : [(pt[0]+dx, pt[1]+dy)
+                                    for dx in range(-t,t+1) for dy in range(-t,t+1)
+                                    if (dx != 0 or dy != 0)
+                                    and Galaxy.isPointIn([pt[0]+dx, pt[1]+dy], reg)]
 
     def toThreeChannel (im1) :
         """ Takes a single channel grayscale image and
@@ -93,6 +109,33 @@ class Galaxy () :
         """ Repeated condition in diagnosis methods """
         return dic if asDict or not bands or len(bands) > 1 else dic[bands]
 
+    def getHistAxes (info, constrictHist, invHist) :
+        """ Helper function to return the axes for the plot """
+        grays, counts, ming, maxg = info
+        freq = np.zeros(256)
+        freq[[] if not grays.size else grays] = counts
+        maxg += 1 if not invHist and maxg < 255 else 0
+
+        ret = (np.arange(ming, maxg, 1), freq[ming:maxg])
+        return ret[-1::-1] if invHist else ret
+
+    def getFitAxes (info, cutoff, divs=1000) :
+        """ Helper function to return the axes for the inverse histogram scatter,
+        fit gaussian curve and noise level """
+        x, y = info
+        batchlog.debug ("{}".format(x))
+        l = 1 if not np.min(x) else 0
+        x, y = x[l:], y[l:]
+
+        gpeak, sigma, noise = cutoff
+        lin = np.linspace(np.min(y), np.max(y), divs)
+        linGauss = (lambda z:gpeak*np.exp(-np.square(z/sigma)))(lin)
+
+        return [(y, x), (lin, linGauss), (lin, noise*np.ones_like(lin))]
+
+    #############################################################################################################
+    #############################################################################################################
+
     def __init__ (self, objid, cood, fitsFold, bands="ri") :
         """Constructor for the galaxy object
             objid       - Object id                 (from .csv file)
@@ -112,11 +155,12 @@ class Galaxy () :
         self.imgs,              # Never None
         self.hullInds,          # Never None
         self.hullRegs,          # Never None
-        self.freqRegs,          # Never None (All 0s, in fact)
-        self.freqSmooth,        # Never None (All 0s, in fact)
-        self.noises,            # None
+        self.smoothInfo,        # Never None (All 0s, in fact)
+        self.regInfo,           # Never None (All 0s, in fact)
+        self.filtrate,          # Boolean
+        self.cutoffs,            # None
         self.peaks,             # Never None
-        self.gtype) = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
+        self.gtype) = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
 
         ######################################################################
         # If download link fails, all else fails
@@ -133,13 +177,7 @@ class Galaxy () :
         """Galaxy object to string"""
         return self.objid
 
-    def getFitsPath (self, b) :
-        """ Helper function for an object that returns the FITS file path
-        for the band specified by argument 'b'"""
-
-        return os.path.join (self.fitsFold, "{}-{}.fits".format(self.objid, b))
-
-    def setRepoLink (self) :
+    def scrapeRepoLink (self) :
         """Set the FITS repository link (for all bands)"""
 
         link = "http://skyserver.sdss.org/dr14/en/tools/explore/summary.aspx?objid=" + self.objid
@@ -164,7 +202,7 @@ class Galaxy () :
         fitsLinkTag = fitsLinkTag[:fitsLinkTag.find('"')].replace("amp;",'')
         self.repoLink = "http://skyserver.sdss.org/dr15/en/tools/explore/" + fitsLinkTag
 
-    def setBandLinks (self) :
+    def scrapeBandLinks (self) :
         """Computes it list of type [(Band, download link for band)] for
         all bands in 'ugriz' and sets it to object attribute"""
 
@@ -196,7 +234,7 @@ class Galaxy () :
             # Downloading .bz2 to 'dPath'
             urllib.request.urlretrieve(dlink, dPath)
         except Exception as e :
-            batchlog.error("{} --> Error in obtaining .bz2 for {} band. Moving onto next object".format(self.objid, b))
+            batchlog.error("{} --> Error in obtaining .bz2 for {} band".format(self.objid, b))
             raise e
 
         try :
@@ -213,7 +251,7 @@ class Galaxy () :
             os.rename(extractPath, self.getFitsPath(b))
             os.remove(dPath)
         except Exception as e :
-            batchlog.error("{} --> Error in extraction of .bz2 for {} band. Moving onto next object".format(self.objid, b))
+            batchlog.error("{} --> Error in extraction of .bz2 for {} band".format(self.objid, b))
             raise e
 
     def download (self) :
@@ -229,17 +267,19 @@ class Galaxy () :
         batchlog.info ("{} --> FITS bands to be downloaded - {}".format(self.objid, toDown))
 
         # Initialised at constructor
-        self.setRepoLink() if self.repoLink is None else None
-
-        # Initialised at constructor
         if self.repoLink is None :
-            # Do at the classification stage
-            batchlog.info("{} --> Will set gtype to INVALID_OBJID".format(self.objid))
-            return
+            self.scrapeRepoLink()
+            if self.repoLink is None :
+                # Do at the classification stage
+                batchlog.info("{} --> Will set gtype to INVALID_OBJID".format(self.objid))
+                return
+
         batchlog.info("{} --> FITS repository link successfully retrieved".format(self.objid))
 
         # Initialised at constructor
-        self.setBandLinks() if not self.downLinks else None
+        if not self.downLinks :
+            self.scrapeBandLinks()
+
         batchlog.info("{} --> FITS bands download links retrieved".format(self.objid))
 
         # Looping over bands
@@ -254,16 +294,22 @@ class Galaxy () :
         """Performs a cutout centred at attribute 'cood' for radius 'rad'
         for all bands"""
 
-        def cutout_b (fitsPath, rad) :
+        def cutout_b (fitsPath) :
             """ Helper function that performs cutout for a band
             for a given radius in argument 'rad'"""
 
+            nonlocal rad
             # In case the FITS file was not downloaded due to any error
             if not os.path.exists (fitsPath) :
                 batchlog.warning ("{} --> No cutout performed as FITS file doesn't exist".format(self.objid))
                 return None
 
-            hdu = fits.open (fitsPath, memmap=False)[0]
+            try :
+                hdu = fits.open (fitsPath, memmap=False)[0]
+            except Exception as e :
+                batchlog.error("{} --> Error in loading FITS file for {}-band".format(self.objid, b))
+                raise e
+
             wcs = WCS(hdu.header)
             position = SkyCoord(ra=Angle (self.cood[0], unit=u.deg),
                             dec=Angle (self.cood[1], unit=u.deg))
@@ -277,7 +323,7 @@ class Galaxy () :
             # still None as I/O is costly
             ######################################################################
             if b in "ugriz" and self.cutouts[b] is None :
-                self.cutouts[b] = cutout_b (self.getFitsPath(b), rad)
+                self.cutouts[b] = cutout_b (self.getFitsPath(b))
             batchlog.info("{} --> Got cutout for {}-band".format(self.objid, b))
 
     def smoothen (self, reduc=2, sgx=5, sgy=5) :
@@ -307,10 +353,11 @@ class Galaxy () :
                 -> Helps to smoothen masked points
         """
 
-        def smoothen_b (img, reduc, sgx, sgy) :
+        def smoothen_b (img) :
             """Helper function for that performs smoothening for a given
             band. Arguments are described in enclosing method"""
 
+            nonlocal reduc, sgx, sgy
             # Step 1
             img[img < 0] = 0
             # Step 2
@@ -332,7 +379,7 @@ class Galaxy () :
 
         # Looping over bands
         for b, cut in self.cutouts.items() :
-            self.imgs[b] = smoothen_b(cut, reduc, sgx, sgy)
+            self.imgs[b] = smoothen_b(cut)
             batchlog.info("{} --> Smoothened {}-band".format(self.objid, b))
 
     def hullRegion (self) :
@@ -397,6 +444,74 @@ class Galaxy () :
                                                 else hullRegion_b(img)
             batchlog.info("{} --> Obtained hull boundary and region for {}-band".format(self.objid, b))
 
+    def distInfo (self) :
+        """Computes the frequency of pixel values in the smooth
+        and hull region for each band"""
+
+        def calcInfo (series) :
+            """ Internal function that returns the count info of the data """
+            uq = np.unique(series, return_counts=True)
+            grays, counts = tuple(np.split(np.array([
+                                        [i, uq[1][ag][0]]
+                                        for i in range(0,256)
+                                        if not not (ag:=np.argwhere(uq[0]==i).flatten()).size
+                                        ]), 2, axis=1))
+
+            return grays, counts
+
+        for b, series in self.getSmoothSeries().items() :
+            self.smoothInfo[b] = (Galaxy.emptyArray(), Galaxy.emptyArray()) if not series.size else calcInfo (series)
+            batchlog.info("{} --> Set the smooth count info {}-band".format(self.objid, b))
+
+        for b, series in self.getSmoothRegSeries().items() :
+            self.regInfo[b] = (Galaxy.emptyArray(), Galaxy.emptyArray()) if not series.size else calcInfo (series)
+            batchlog.info("{} --> Set the hull region count info for {}-band".format(self.objid, b))
+
+    def filter (self) :
+        """ Filtration condition before classification
+        If true, do not classify --> There is no double nuclei """
+
+        for b in self.bands :
+            if b in "ugriz" :
+                self.filtrate[b] = self.cutouts[b] is None or\
+                        not self.imgs[b].size or\
+                        not self.hullInds[b].size or\
+                        not self.hullRegs[b].size or\
+                        not Galaxy.isPointIn (np.array([self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2]), self.hullRegs[b]) or\
+                        (lambda x,y : 100*(x-y)/x < 10)(self.imgs[b].flatten().shape[0], self.hullRegs[b].shape[0])
+                batchlog.info("{} --> Calculated filtrate for {}-band".format(self.objid, b))
+
+    def fitCutoff (self, inv_sig=20) :
+        """ Fit a gaussian to the inverse grayscale intensity histogram
+        and deduce the noise/signal cutoff """
+
+        def fitCutoff_b (info) :
+            """ Fits the noise per band """
+            nonlocal inv_sig
+
+            grays, counts = info
+            ming = 1 if not np.min(grays) else 0
+            x, y = grays[ming:], counts[ming:]
+
+            gaussPeak = np.max(x)
+            gaussian = lambda z, sg : gaussPeak*np.exp(-np.square(z/sg))
+
+            try :
+                sigma = curve_fit (gaussian, y.flatten(), x.flatten(), p0=[np.max(y)/5])[0][0]
+                sigz = np.sqrt(np.log(inv_sig))*sigma
+                noise = np.floor(gaussian(sigz, sigma))
+            except :
+                return (None, None, None)
+
+            return gaussPeak, sigma, noise
+
+        for b, filt in self.filtrate.items() :
+            if not filt :
+                self.cutoffs[b] = fitCutoff_b(self.regInfo[b])
+                batchlog.info("{} --> Fit gaussian and deduced cutoff for {}-band".format(self.objid, b))
+            else :
+                self.cutoffs[b] = (None, None, None)
+
     def gradAsc (self, reduc=100, tol=3) :
         """Performs gradient ascent in the region indicated by attribute 'hullReg'
         for each band. It works as follows -
@@ -419,24 +534,12 @@ class Galaxy () :
         'reduc' is a proportionality factor to decide the number of runs of gradient
         ascent to perform"""
 
-        # Lambda function to checks if a 2-D point is in a list of points
-        isPointIn = lambda pt, reg : (pt == reg).all(axis=1).any()
-
-        ######################################################################
-        # Returns the 7x7 neighborhood centred around a pixel
-        # Any neighborhood point that falls outside the search region is
-        # discarded
-        ######################################################################
-        tolNeighs = lambda pt, reg, t : [(pt[0]+dx, pt[1]+dy)
-                                        for dx in range(-t,t+1) for dy in range(-t,t+1)
-                                        if (dx != 0 or dy != 0)
-                                        and isPointIn([pt[0]+dx, pt[1]+dy], reg)]
-
-        def gradAsc_b (reg, gradKey, reduc, tol) :
+        def gradAsc_b (reg, gradKey) :
             """ Performs gradient ascent on a region for a particular band
             Argument 'gradKey' is a lambda function for the underlying pixel
             values for the band image """
 
+            nonlocal reduc, tol
             batchlog.debug("Size of region = {}".format(len(reg)))
             if not reg.size :
                 return Galaxy.emptyPeaks()
@@ -463,7 +566,7 @@ class Galaxy () :
             # in the above order
             ######################################################################
             peakFilter = lambda pk :\
-            len(tolNeighs(pk, reg, 1)) == 8 and \
+            len(Galaxy.tolNeighs(pk, reg, 1)) == 8 and \
             gradKey(pk) != 0
 
             # No need to keep track of iteration number
@@ -476,7 +579,7 @@ class Galaxy () :
                     # is empty, it means that the point has gotten trapped somewhere. This
                     # can occur when the region under consideration is miniscule
                     ######################################################################
-                    if not (ns:=tolNeighs(pt, reg, tol)) :
+                    if not (ns:=Galaxy.tolNeighs(pt, reg, tol)) :
                         break
 
                     # Step 2
@@ -496,36 +599,20 @@ class Galaxy () :
         # Looping over bands
         for b,img in self.imgs.items() :
             self.peaks[b] = Galaxy.emptyPeaks() if not img.size\
-                            else gradAsc_b(self.hullRegs[b], lambda x:img[x], reduc, tol)
+                            else gradAsc_b(self.hullRegs[b], lambda x:img[x])
             batchlog.info("{} --> Found peak list for {}-band".format(self.objid, b))
 
-    def setFreq (self) :
-        """Computes the frequency of pixel values in the smooth
-        and hull region for each band"""
+    #############################################################################################################
+    #############################################################################################################
 
-        def calcFreq (series, freq) :
-            """ Internal function that returns the frequency list in [0-255] """
-            uq = np.unique(series, return_counts=True)
-            ind, val = tuple(np.split(np.array([
-                                            [i, uq[1][ag][0]]
-                                            for i in range(0,256)
-                                            if not not (ag:=np.argwhere(uq[0]==i).flatten()).size
-                                            ]), 2, axis=1))
-            freq[ind] = val
-            return freq
+    def getFitsPath (self, b) :
+        """ Helper function for an object that returns the FITS file path
+        for the band specified by argument 'b'"""
 
-        for b, series in self.getSmoothSeries().items() :
-            freq = np.zeros(256, dtype=np.uint)
-            self.freqSmooth[b] = freq if not series.size else calcFreq (series, freq)
-            batchlog.info("{} --> Set the smooth frequency list for {}-band".format(self.objid, b))
+        return os.path.join (self.fitsFold, "{}-{}.fits".format(self.objid, b))
 
-        for b, series in self.getRegSeries().items() :
-            freq = np.zeros(256, dtype=np.uint)
-            self.freqRegs[b] = freq if not series.size else calcFreq (series, freq)
-            batchlog.info("{} --> Set the hull region frequency list for {}-band".format(self.objid, b))
-
-    def getSmooth (self, bands="", triple=False, asDict=False) :
-        """ Returns a copy of the smoothed image of the specified band(s)
+    def getCutout (self, bands="", asDict=False) :
+        """ Returns a copy of the cutout of the specified band(s)
         If asDict is set,
             then images are returned as a dictionary
         Else,
@@ -536,7 +623,28 @@ class Galaxy () :
         Additionally, if triple is set, then it is the three-channel copy of
         the image that is returned"""
 
-        # If triple =
+        cuts = {b:Galaxy.emptyImage() if cut is None else cut
+            for b,cut
+            in Galaxy.stripDict(self.cutouts, bands).items()}
+        return Galaxy.copyRet(cuts, bands, asDict)
+
+    def getCutoutSeries (self, bands="", asDict=False) :
+        """ Flattens the cutout image """
+
+        cutFlat = {b:cut.flatten()
+                for b, cut in self.getCutout(bands, True).items()}
+        return Galaxy.copyRet(cutFlat, bands, asDict)
+
+    def getCutoutRegSeries (self, bands="", asDict=False) :
+        """ Flattens the hull region for cutout image """
+
+        cutRegFlat = {b:cut[Galaxy.twoDIndexer(self.hullRegs[b])].flatten()
+                    for b, cut in
+                    self.getCutout(bands, True).items()}
+        return Galaxy.copyRet(cutRegFlat, bands, asDict)
+
+    def getSmooth (self, bands="", triple=False, asDict=False) :
+        """ Returns the smoothed image """
 
         imgs = {b:Galaxy.toThreeChannel(np.zeros_like(self.cutouts[b]) if not img.size else img) if triple
             else np.copy(img)
@@ -550,16 +658,17 @@ class Galaxy () :
         imgFlat = {b:img.flatten()
                 for b, img in
                 self.getSmooth(bands, False, True).items()}
+
         return Galaxy.copyRet(imgFlat, bands, asDict)
 
-    def getRegSeries (self, bands="", asDict=False) :
-        """ Flattens the hull region """
+    def getSmoothRegSeries (self, bands="", asDict=False) :
+        """ Flattens the hull region for smoothed image"""
 
-        regFlat = {b:Galaxy.emptySeries() if not img.size else img[Galaxy.twoDIndexer(self.hullRegs[b])].flatten()
-                for b,img in
-                Galaxy.stripDict(self.imgs, bands).items()
-            }
-        return Galaxy.copyRet(regFlat, bands, asDict)
+        smoothRegFlat = {b:img[Galaxy.twoDIndexer(self.hullRegs[b])].flatten()
+                        for b,img in
+                        self.getSmooth(bands, False, True).items()}
+
+        return Galaxy.copyRet(smoothRegFlat, bands, asDict)
 
     def getHullMarked (self, bands="", asDict=False) :
         """ Returns a copy of the smoothed image of the specified band(s) with hull marked"""
@@ -580,3 +689,30 @@ class Galaxy () :
                 peakMarks[b][pk] = np.array(Galaxy.peakMarker)
 
         return Galaxy.copyRet(peakMarks, bands, asDict)
+
+    def getSmoothHist (self, bands="", constrictHist=False, invHist=False, asDict=False) :
+        """ Returns (x, y) smoothed image histogram data for all bands """
+
+        smHists = {b:Galaxy.getHistAxes(info, constrictHist, invHist)
+                for b, info
+                in Galaxy.stripDict(self.smoothInfo, bands).items()}
+
+        return Galaxy.copyRet(smHists, bands, asDict)
+
+    def getRegHist (self, bands="", constrictHist=False, invHist=False, asDict=False) :
+        """ Returns (x, y) hull region histogram data for all bands """
+
+        regHists = {b:Galaxy.getHistAxes(info, constrictHist, invHist)
+                for b, info
+                in Galaxy.stripDict(self.regInfo, bands).items()}
+
+        return Galaxy.copyRet(regHists, bands, asDict)
+
+    def getGaussFit (self, bands="", asDict=False) :
+        """ Returns the axes data for the inverse intensity scatter,
+        fit gaussian curve and cutoff level """
+
+        gaussFits = {b:Galaxy.getFitAxes(self.regInfo[b], self.cutoffs[b])
+                    for b, filt in self.filtrate.items() if not filt}
+
+        return Galaxy.copyRet(gaussFits, bands, asDict)

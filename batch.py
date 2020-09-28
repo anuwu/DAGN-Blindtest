@@ -59,6 +59,9 @@ class Batch () :
         """Formats error messages for the run logger"""
         return  2*(k*"#" + '\n') + txwr(width=k).fill(text=fix) + '\n' + 2*(k*"#" + '\n')
 
+    #############################################################################################################
+    #############################################################################################################
+
     def __setBatchLogger__ (self) :
         """Sets the correct fileHandler location in the galaxy.py logger
         for the batch of galaxies that will be processsed. Also deletes the
@@ -187,6 +190,10 @@ class Batch () :
         """Batch object to string"""
         return self.csvPath
 
+    def __len__ (self) :
+        """Length of the batch"""
+        return len(self.galaxies)
+
     @property
     def csvPath (self) :
         """Property attribute - Plain name of the csv File"""
@@ -207,24 +214,36 @@ class Batch () :
         """Property attribute - Path of the log file for the batch"""
         return os.path.join(os.getcwd(), self.batchFold, "{}.log".format(self.batchName))
 
-    def downloadPhase (self) :
+    def downloadBatch (self) :
         """For each galaxy in the batch's list, downloads it
         to the FITS folder of the batch"""
 
         runlog.info("Downloading currently monitoring batch")
-
-        # Looping through galaxy objects
         for i, g in enumerate(self.galaxies) :
             try :
                 g.download()
             except Exception as e :
-                runlog.error("Unknown error! Please check exception message\n\n{}".format(Batch.logFixFmt(str(e))))
+                runlog.error("Unknown error while downloading! Please check exception message\n\n{}".format(Batch.logFixFmt(str(e))))
             else :
                 runlog.info("{} --> Downloaded".format(g.objid))
 
         runlog.info("Downloaded currently monitoring batch")
 
-    def procPhase (self) :
+    def loadBatch (self) :
+        """Loads all the FITS files of the batch into memory"""
+
+        runlog.info ("Loading currently monitoring batch")
+        for g in self.galaxies :
+            try :
+                g.cutout ()
+            except Exception as e :
+                runlog.error("Unknown error in loading FITS! Please check exception message\n\n{}".format(Batch.logFixFmt(str(e))))
+            else :
+                runlog.info("{} --> Loaded".format(g.objid))
+
+        runlog.info("Loaded currently monitoring batch")
+
+    def processBatch (self) :
         """For each galaxy in the batch's list, processes it
         to the pre-classification stage. Performs the following -
             1. Cutout from the FITS file
@@ -233,51 +252,68 @@ class Batch () :
             4. Perform peak searching """
 
         runlog.info ("Processing currently monitoring batch")
-        # Looping through galaxy objects
         for g in self.galaxies :
-            g.cutout()
             g.smoothen()
             g.hullRegion()
-            g.setFreq()
-            # g.gradAsc()
+            g.distInfo()
+            g.filter()
             runlog.info("{} --> Processed".format(g.objid))
+
         runlog.info ("Processed currently monitoring batch")
 
-    def procDiagnose (self) :
+    def classifyBatch (self) :
+        """ For each galaxy in the batch, classifies it only if the
+        filtration dict allows it to
+        1. Identifies the noise/signal cutoff by fitting a gaussian to
+        the inverse intensity histogram
+        2. Performs stochastic gradient ascent  !!! TO-DO
+        3. Applies conditions of connected regions to classify the peaks !!! TO-DO"""
+
+        runlog.info ("Processing currently monitoring batch")
+        for g in self.galaxies :
+            g.fitCutoff ()
+            runlog.info("{} --> Classified".format(g.objid))
+
+        runlog.info ("Classified currently monitoring batch")
+
+    #############################################################################################################
+    #############################################################################################################
+
+    def procDiagnose (self, constrictHist=False, invHist=False) :
         """Generates the following for each galaxy in each band -
             1. Peaks with enclosing hull
             2. Histogram of smoothed image
             3. Histogram of hull region"""
 
-        (lambda d : os.mkdir(d) if not os.path.isdir(d) else None)\
-        (diagPath:=os.path.join(self.batchFold, "Proc-Diag"))
-
-        isPointIn = lambda pt, reg : (pt == reg).all(axis=1).any()
+        diagPath = os.path.join(self.batchFold, "Proc-Diag")
+        if not os.path.isdir(diagPath) :
+            os.mkdir(diagPath)
 
         runlog.info ("Diagnosing currently monitoring batch")
         for g in self.galaxies :
-            for b in self.bands :
-                if g.cutouts[b] is None or\
-                not g.imgs[b].size or\
-                not g.hullInds[b].size or\
-                not g.hullRegs[b].size or\
-                not isPointIn (np.array([g.imgs[b].shape[0]//2, g.imgs[b].shape[1]//2]), g.hullRegs[b]) or\
-                100*(g.imgs[b].flatten().shape[0] - g.hullRegs[b].shape[0])\
-                /g.imgs[b].flatten().shape[0] < 10 :
+            for b, filt in g.filtrate.items() :
+                if filt :
                     continue
 
-                # Hull
-                svimg = Image.fromarray(g.getHullMarked(b).astype(np.uint8))
+                # Hull only
+                img = g.getHullMarked(b)
+                svimg = Image.fromarray(img.astype(np.uint8))
                 svimg.save(os.path.join(diagPath, "{}-{}_hull.png".format(g.objid, b)))
 
-                # Histogram of smoothed frequency list
-                plt.plot (np.arange(0, 256, 1), g.freqSmooth[b])
-                plt.savefig (os.path.join(diagPath, "{}-{}_smoothHist.png".format(g.objid, b)))
-                plt.close()
+                # Hull with signal
+                img[img[...,0] > g.cutoffs[b][2]] = np.array(Galaxy.signalMarker)
+                svimg = Image.fromarray(img.astype(np.uint8))
+                svimg.save(os.path.join(diagPath, "{}-{}_hullSignal.png".format(g.objid, b)))
 
-                # Histogram of region frequency list
-                plt.plot (np.arange(0, 256, 1), g.freqRegs[b])
-                plt.savefig (os.path.join(diagPath, "{}-{}_regHist.png".format(g.objid, b)))
+                # Scatter and fit
+                axes = g.getGaussFit(b)
+                x, y = axes[0]
+                plt.plot(x, y, 'o', markersize=3)
+                x, y = axes[1]
+                plt.plot (x, y, 'r')
+                x, y = axes[2]
+                plt.plot (x, y, '--k')
+                plt.savefig (os.path.join(diagPath, "{}-{}_gaussFit.png".format(g.objid, b)))
                 plt.close()
 
             runlog.info("{} --> Diagnosed".format(g.objid))

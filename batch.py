@@ -1,14 +1,17 @@
 import os
+import sys
 import numpy as np
 import pandas as pd
 import logging as log
 import datetime as dt
+import matplotlib.pyplot as plt
+from importlib import reload
 from textwrap import TextWrapper as txwr
 from PIL import Image
 
 import galaxy
+galaxy = reload(galaxy)
 Galaxy = galaxy.Galaxy
-plt = galaxy.plt
 
 # Create the /Logs folder for the root directory if it doesn't already exist
 if not os.path.isdir ("Logs") :
@@ -35,6 +38,8 @@ for h in runlog.handlers :
 
 runlog.addHandler (fileHandler)
 runlog.info("Batch runner started!")
+
+sys.setrecursionlimit(10**6)
 
 class Batch () :
     """Class that defines a batch of SDSS objIDs on which classifcation is to be performed"""
@@ -269,9 +274,12 @@ class Batch () :
         2. Performs stochastic gradient ascent  !!! TO-DO
         3. Applies conditions of connected regions to classify the peaks !!! TO-DO"""
 
-        runlog.info ("Processing currently monitoring batch")
+        runlog.info ("Classifying currently monitoring batch")
         for g in self.galaxies :
-            g.fitCutoff ()
+            g.fitGaussian()
+            g.searchRegion()
+            g.sga()
+            g.classify()
             runlog.info("{} --> Classified".format(g.objid))
 
         runlog.info ("Classified currently monitoring batch")
@@ -301,18 +309,14 @@ class Batch () :
                 svimg.save(os.path.join(diagPath, "{}-{}_hull.png".format(g.objid, b)))
 
                 # Hull with signal
-                img[img[...,0] > g.cutoffs[b][2]] = np.array(Galaxy.signalMarker)
+                img = g.getHullMarked(b, True)
                 svimg = Image.fromarray(img.astype(np.uint8))
                 svimg.save(os.path.join(diagPath, "{}-{}_hullSignal.png".format(g.objid, b)))
 
                 # Scatter and fit
-                axes = g.getGaussFit(b)
-                x, y = axes[0]
-                plt.plot(x, y, 'o', markersize=3)
-                x, y = axes[1]
-                plt.plot (x, y, 'r')
-                x, y = axes[2]
-                plt.plot (x, y, '--k')
+                argPack = g.getGaussPlot(b)
+                for i in [0, 1, 2] :
+                    plt.plot(*argPack[i]["args"], **argPack[i]["kwargs"])
                 plt.savefig (os.path.join(diagPath, "{}-{}_gaussFit.png".format(g.objid, b)))
                 plt.close()
 

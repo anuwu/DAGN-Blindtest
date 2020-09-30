@@ -19,11 +19,12 @@ from astropy import units as u
 from astropy.utils.exceptions import AstropyWarning
 from collections import OrderedDict
 from scipy.optimize import curve_fit
+from scipy.optimize.minpack import OptimizeWarning
 import scipy.special as sc
 from enum import Enum
 
 # Ignores covariance warning from scipy
-sc.seterr(all='ignore')
+warnings.simplefilter('ignore', category=OptimizeWarning)
 # Removes the 'RADECSYS deprecated' warning from astropy cutout
 warnings.simplefilter('ignore', category=AstropyWarning)
 # Override system recursion limit for DFS
@@ -31,7 +32,7 @@ sys.setrecursionlimit (10**6)
 
 # Setting default logger for the module
 batchlog = log.getLogger (__name__)
-batchlog.setLevel(log.INFO)
+batchlog.setLevel(log.WARNING)
 fileHandler = log.FileHandler("./galaxy.log", mode='w')
 fileHandler.setFormatter (log.Formatter ("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
@@ -90,24 +91,41 @@ class Galaxy () :
     emptyPeaks = lambda : OrderedDict({})
 
     # Two dimensional multi-indexer
-    twoDIndexer = lambda x : (lambda f : (f(x[:,0]), f(x[:,1])))\
+    coodIndexer = lambda x : (lambda f : (f(x[:,0]), f(x[:,1])))\
                             (lambda y : [] if not y.size else y)
-    # Two dimensional indexer
-    twoDindex = lambda x : (x[0], x[1])
     # Boolean array for equality within region
     ptRegCheck = lambda pt, reg : (pt == reg).all(axis=1)
     # Check if point is in a region
     isPointIn = lambda pt, reg : Galaxy.ptRegCheck(pt, reg).any()
     # Return index of a point in a region
     ptIndex = lambda pt, reg : np.argwhere(Galaxy.ptRegCheck(pt, reg))
-    ######################################################################
-    # Returns the 7x7 neighborhood centred around a pixel Any neighborhood
-    # point that falls outside the search region is discarded
-    ######################################################################
-    tolNeighs = lambda pt, reg, t : [(pt[0]+dx, pt[1]+dy)
-                                    for dx in range(-t,t+1) for dy in range(-t,t+1)
-                                    if (dx != 0 or dy != 0)
-                                    and Galaxy.isPointIn((pt[0]+dx, pt[1]+dy), reg)]
+
+    # Returns a (2t x 2t) neighborhood centred around a pixel
+    tolNeighs = lambda pt, t : [(pt[0]+dx, pt[1]+dy)
+                            for dx in range(-t, t+1) for dy in range(-t, t+1)
+                            if dx or dy]
+    # Filters the output of the above within a region 'reg'
+    neighsInReg = lambda pt, reg, t : [p for p in Galaxy.tolNeighs(pt, t)
+                                    if Galaxy.isPointIn(p, reg)]
+
+    def comparatorKey (cmp) :
+        """Convert a cmp= function into a key= function"""
+        class K:
+            def __init__(self, val, *args):
+                self.val = val
+            def __lt__(self, other):
+                return cmp(self.val, other.val)
+            def __gt__(self, other):
+                return not self.__lt__(other) and not self.__eq__(other)
+            def __eq__(self, other):
+                return not self.__lt__(other) and not cmp(other.val, self.val)
+            def __le__(self, other):
+                return self.__lt__(other) or self.__eq__(other)
+            def __ge__(self, other):
+                return not self.__lt__(other)
+            def __ne__(self, other):
+                return not self.__eq__(other)
+        return K
 
     def toThreeChannel (im1) :
         """
@@ -198,8 +216,8 @@ class Galaxy () :
 
         self.gaussParams,       # (mean, sigma, noise, half-width half-max)     --> Empty () on filtration, or fitting failure
         self.searchRegs,        # Region in hull above noise                    --> Empty (0, 2) numpy array on fitting failure
-        self.noises,            # Noise value for SNR calculation               --> If None, don't use SNR filtration in SGA
-        self.gradPeaks,         # Peaks found in SGA                --> Empty OrderedDict for no peaks
+        self.noiseAvgs,            # Noise value for SNR calculation               --> If None, don't use SNR filtration in SGA
+        self.gradPeaks,         # Peaks found in SGA                            --> Empty OrderedDict for no peaks
         self.finPeaks           # Reduced peak list after dfs                   --> Empty [] for no peaks
         ) = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
 
@@ -518,7 +536,7 @@ class Galaxy () :
 
         for b, series in self.getSmoothRegSeries().items() :
             self.regInfo[b] = (Galaxy.emptyArray(), Galaxy.emptyArray()) if not series.size else calcInfo (series)
-            batchlog.info("{} --> Set the hull region count info for {}-band".format(self.objid, b))
+            batchlog.info("{} --> Found the hull region pixel distribution for {}-band".format(self.objid, b))
 
     def filter (self, per=10) :
         """
@@ -537,9 +555,9 @@ class Galaxy () :
                 self.filtrate[b] = self.cutouts[b] is None or\
                         not self.imgs[b].size or\
                         not self.hullInds[b].size or\
-                        not self.hullRegs[b].size or\
-                        not Galaxy.isPointIn ((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b]) or\
-                        (lambda x,y : 100*(x-y)/x < per)(self.imgs[b].flatten().shape[0], self.hullRegs[b].shape[0])
+                        not self.hullRegs[b].size # or\
+                        # not Galaxy.isPointIn ((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b]) or\
+                        # (lambda x,y : 100*(x-y)/x < per)(len(self.imgs[b].flatten()), len(self.hullRegs[b]))
                 batchlog.info("{} --> Calculated filtrate for {}-band".format(self.objid, b))
 
     def fitGaussian (self, noiseSig=10, hwhmSig=2) :
@@ -577,26 +595,50 @@ class Galaxy () :
             self.gaussParams[b] = () if filt else fitGaussian_b(self.regInfo[b])
             batchlog.info("{} --> Fit gaussian for {}-band".format(self.objid, b))
 
-    def searchRegion (self) :
+    def cutoffNoise (self) :
         """
         For each band, finds the region within the hull that is above the noise
         level determined by gaussian fitting. This is where SGA
         will be performed
         """
 
-        ######################################################################
-        # Helper function that finds the search region in the hull region
-        # based on the cutoff noise
-        ######################################################################
+        # Returns the search region in the hull region based on the cutoff noise
         searchReg_b = lambda hr, img, ns : np.array([
-            pt for pt in hr if img[Galaxy.twoDindex(pt)] >= ns
+            pt for pt in hr if img[tuple(pt)] >= ns
         ])
 
-        for b,filt in self.filtrate.items() :
-            self.searchRegs[b] = Galaxy.emptyInds() if filt or not self.gaussParams[b]\
-                                else searchReg_b(self.hullRegs[b], self.imgs[b], self.gaussParams[b][2])
+        def avgNoise_b (img, cutout, gaussNoise, iters=100) :
+            """ Helper function that calculates the average noise in the image
+                1. Finds the indices where the signal isn't strong
+                2. Takes a 3x3 neighborhood of a randomly chosen point
+                3. Averages the pixel values over these points
+                4. Repeat above steps 100 times and return average noise """
 
-    def sga (self, reduc=100, tol=3) :
+            # If there is no pixel below noise level, then don't calculate it
+            if not (noiseInds:=np.argwhere(img < gaussNoise)).size :
+                return None
+
+            noiseTot = 0
+            for _ in range(0, iters) :
+                pt = tuple(noiseInds[np.random.choice(range(0, len(noiseInds)))])
+                noiseTot += np.mean([
+                    cutout[p] for p in
+                    ([pt] + Galaxy.neighsInReg(pt, noiseInds, 1))
+                ])
+
+            return noiseTot/iters
+
+        for b,filt in self.filtrate.items() :
+            self.searchRegs[b], self.noiseAvgs[b] = (Galaxy.emptyInds(), None) if filt or not self.gaussParams[b] \
+                                                    else (searchReg_b(self.hullRegs[b],
+                                                                    self.imgs[b],
+                                                                    self.gaussParams[b][2]),
+                                                        avgNoise_b(self.imgs[b],
+                                                                self.cutouts[b],
+                                                                self.gaussParams[b][2]))
+            batchlog.info("{} --> Cut-off noise and signal for {}-band".format(self.objid, b))
+
+    def sga (self, highPeak=False, boundPeak=True, reduc=100, tol=3) :
         """
         Performs Stochastic Gradient Ascent (SGA) in the region indicated by attribute 'hullReg'
         for each band. It works as follows -
@@ -620,7 +662,7 @@ class Galaxy () :
         SGA to perform
         """
 
-        def sga_b (searchReg, gradKey, hwhm) :
+        def sga_b (searchReg, gradKey, hwhm, avgNoise) :
             """ Performs SGA on a region for a particular band
             Argument 'gradKey' is a lambda function for the underlying pixel
             values for the band image """
@@ -642,30 +684,38 @@ class Galaxy () :
             # Filtration condition -
             # 1. No other neighbor in the 7x7 neighborhood of the peak must already
             # be in the peak list
-            # 2. All the points in a 1x1 region around the peak must be in the
-            # search region
+            # 2. If boundPeak is true, All the points in a 1x1 region around the
+            # peak must be in the search region
             #   -> Otherwise the peak found is too close to the edge
-            # 3. The peak found must be above the half-width half-maximum level
+            # 3. If highPeak is true, the peak found must be above the half-width
+            # half-maximum level
+            # 4. The SNR must be greater than 3
+            #   -> Found by averaging the pixels near the peak and dividing by the
+            #   noise level
             #
             # Each line in the lambda function below represents the conditions
             # in the above order
             ######################################################################
-            peakFilter = lambda pk :\
-            not np.array([x in peaks for x in Galaxy.tolNeighs(pk, searchReg, tol)]).any() and\
-            len(Galaxy.tolNeighs(pk, searchReg, 1)) == 8 and\
-            gradKey(pk) >= hwhm
+            validPeak = lambda pk :\
+            not np.array([x in peaks for x in Galaxy.neighsInReg(pk, searchReg, tol)]).any() and\
+            (boundPeak or len(Galaxy.neighsInReg(pk, searchReg, 1)) == 8) and\
+            (not highPeak or gradKey(pk) >= hwhm) and\
+            (avgNoise is None or np.mean([gradKey(p)
+                                            for p in
+                                            ([pk] + Galaxy.neighsInReg(pk, searchReg, 1))
+                                            ])/avgNoise > 3)
 
             # No need to keep track of iteration number
             for _ in range(0, iters) :
                 # Step 1
-                st = pk = pt = (lambda x:(x[0], x[1]))(searchReg[np.random.choice(range(0, searchReg.shape[0]))])
+                st = pk = pt = tuple(searchReg[np.random.choice(range(0, len(searchReg)))])
                 while pt :
                     ######################################################################
                     # If at any point in the interation, the list of neighboring 7x7 points
                     # is empty, it means that the point has gotten trapped somewhere. This
                     # can occur when the region under consideration is miniscule
                     ######################################################################
-                    if not (ns:=Galaxy.tolNeighs(pt, searchReg, tol)) :
+                    if not (ns:=Galaxy.neighsInReg(pt, searchReg, tol)) :
                         break
 
                     # Step 2
@@ -676,33 +726,37 @@ class Galaxy () :
                 # If peak already exists, increase its frequency count
                 if pk in peaks :
                     peaks[pk][1] += 1
-                # If peakFilter allows the peak, create a new entry in the dict
-                elif peakFilter(pk) :
+                # If validPeak allows the peak, create a new entry in the dict
+                elif validPeak(pk) :
                     peaks[pk] = [gradKey(pk), 1]
 
             return OrderedDict (sorted (peaks.items(), key=lambda x:x[1][0], reverse=True))
 
         for b, filt in self.filtrate.items() :
             self.gradPeaks[b] = Galaxy.emptyPeaks() if filt or not self.searchRegs[b].size\
-                            else gradAsc_b(self.searchRegs[b],
+                            else sga_b(self.searchRegs[b],
                                         lambda x:self.imgs[b][x],
-                                        self.gaussParams[b][3])
+                                        self.gaussParams[b][3],
+                                        self.noiseAvgs[b])
 
-            batchlog.info("{} --> Found search region and peak list for {}-band".format(self.objid, b))
+            batchlog.info("{} --> Performed stochastic gradient ascent {}-band".format(self.objid, b))
 
-    def noiseLevel (self) :
-        """ For each band, computes the average noise in the image, which will
-        be used in computing the SNR of peaks during classification """
-
-    def classify (self) :
+    def verdict (self, classType=2) :
         """
         Final classification of the image. Works as follows
-        1. If gtype is already set, do not perform SGA
+        1. If filtered or gtype is already set, do not perform SGA
             -> INVALID_OBJID or FAIL_DLINK
-        2. If filtered, do not perform SGA
-        3. Find the raw peaks returned by gradient ascent
-            -> It has its own parsimonious filtering condition
-        4.
+        2. If the no. of peaks returned by gradient descent is 0 or 1,
+        then return it simply
+        3. If the number of peaks is two or more, then we need to perform dfs
+        and find the connected components. Following this stage, there are two
+        variants towards classification -
+            a. filterPeaks1 - Finds the top two brightest peaks and returns DOUBLE
+            if they belong to the same component, else single
+            b. filterPeaks2 - The connected regions are sorted according to a criteria
+                -> Smallest distance from the centre of the image (in bins of 10)
+                -> Largest size of a region (within each max)
+            Top 1 or 2 peaks in this component is reported
         """
 
         ######################################################################
@@ -710,22 +764,24 @@ class Galaxy () :
         # in a region 'reg'
         ######################################################################
         dfsNeighs = lambda ind, reg : [ni[0][0] for pt in
-                                    Galaxy.tolNeighs(reg[ind], reg, 1)
+                                    Galaxy.neighsInReg(reg[ind], reg, 1)
                                     if (ni:=Galaxy.ptIndex(pt, reg)).size > 0]
 
         def dfs (ind, reg, vis, comp) :
+            """ Visiting function for depth first search """
+
             # Mark current index as visited
             vis[ind] = True
-
             # Append current index to the present component that is being created
             comp.append (ind)
-
             # For each neighbor, if it hasn't already been visited, visit it
             for i in dfsNeighs (ind, reg) :
                 if not vis[i]:
                     dfs (i, reg, vis, comp)
 
         def connComps (reg) :
+            """ Returns the connected components in a region """
+
             noPts = len(reg)
             vis = np.repeat(False, noPts)
             comps = []
@@ -734,12 +790,10 @@ class Galaxy () :
             # Seed indices that each returns one connected component
             while seed < noPts :
                 dfs(seed, reg, vis, comp:=[])
-
                 # Mapping indices to mixel coordinates
                 comps.append(np.array([
                     reg[i] for i in comp
                 ]))
-
                 # Find the next seed index, if it exists
                 while seed < noPts and vis[seed] :
                     seed += 1
@@ -747,21 +801,20 @@ class Galaxy () :
             # Return the list of components as a list. Each entry is a list of pixel coordinates
             return comps
 
-        def filterPeaks (peaks, sreg) :
+        def filterPeaks1 (peaks, sreg) :
             """ Helper function for filtering gradient ascent peaks """
 
-            # No peaks detected
+            # Return simply for 0 or 1 peak
             if not peaks :
                 return []
             if len(peaks) == 1 :
-                return []
+                return list(peaks)
 
             # Obtain connected components
             comps = connComps(sreg)
 
             # Mapping which component each peak belongs to
             pk_comp = {p:i for i, c in enumerate(comps) for p in peaks if Galaxy.isPointIn(p, c)}
-
             # Acquiring the top two brightest peaks
             top = list(peaks)[:2]
             p1, p2 = top[0], top[1]
@@ -773,18 +826,74 @@ class Galaxy () :
             else :
                 return [p1 if len(comps[pk_comp[p1]]) > len(comps[pk_comp[p2]]) else p2]
 
+        def filterPeaks2 (peaks, sreg, imShape, imKey, hwhm, distGrade=10) :
+            """ Helper function for filtering gradient ascent peaks """
 
+            # Return simply for 0 or 1 peak
+            if not peaks :
+                return []
+            if len(peaks) == 1 :
+                return list(peaks)
+
+            # Obtain connected components
+            comps = connComps(sreg)
+
+            ######################################################################
+            # Returns the distance from the centre of the image to the centre of
+            # the connected component
+            ######################################################################
+            compCentreDist = lambda c,s : np.floor(np.sqrt(np.sum(np.square(
+                np.mean(c, axis=0) - np.array(s)//2
+            ))))//distGrade
+
+            # Dict --> component index : list of peaks
+            comp_pk = {i:[p for p in peaks if Galaxy.isPointIn(p, c)] for i,c in enumerate(comps)}
+            # Dict --> component index : distance from centre of image to centre of component
+            comp_dist = {i:compCentreDist(c, imShape) for i,c in enumerate(comps)}
+
+            ######################################################################
+            # Comparator function for regions -
+            # 1. Ascending distance to the centre
+            # 2. Descending size of region
+            ######################################################################
+            regLess = lambda c1, c2 : (d1:=comp_dist[c1]) < (d2:=comp_dist[c2]) \
+                    or (d1 == d2 and len(comps[c1]) > len(comps[c2]))
+
+            # Sort the list of indices according to the comparator 'regless'
+            compInds = sorted(range(0, len(comps)), key=Galaxy.comparatorKey(regLess))
+
+            ######################################################################
+            # Return the top two bright peaks in the best component after filtering
+            # the ones, which are less than half-width half-maximum, out
+            ######################################################################
+            bestPeaks = [pk for pk in comp_pk[compInds[0]] if imKey(pk) >= hwhm]
+            return sorted(bestPeaks, key=imKey, reverse=True)[:2]
+
+        # gtype could be set to INVALID_OBJID or FAIL_DLINK from the downloading phase
+        if self.gtype is not None :
+            self.finPeaks = {b:[] for b in self.bands if b in "ugriz"}
+            batchlog.info("{} --> Verdict : {}".format(self.objid, self.gtype))
+            return
+
+        # Filtered object means no peak
         for b, gp in self.gradPeaks.items() :
-            # gtype could be set to INVALID_OBJID or FAIL_DLINK from the downloading phase
-            if self.gtype is not None :
-                self.finPeaks = {b:[] for b in self.bands if b in "ugriz"}
-                continue
-
-            # If filter, final peaks in each band is an empty list
             self.finPeaks[b] = [] if self.filtrate[b] or not gp \
-                                else filterPeaks (gp, self.searchRegs[b])
+                                else (filterPeaks1(gp, self.searchRegs[b]) if classType == 1 \
+                                    else filterPeaks2 (gp,
+                                                    self.searchRegs[b],
+                                                    self.imgs[b].shape,
+                                                    lambda x:self.imgs[b][x],
+                                                    self.gaussParams[b][3]))
 
         # Mapping filtered peak list in each band to its length
+        peakLens = {b:len(fp) for b, fp in self.finPeaks.items()}
+        rLen, iLen = peakLens['r'], peakLens['i']
+        if rLen == 2 and iLen in [1, 2] :
+            self.gtype = GalType(GalType.DOUBLE)
+        else :
+            self.gtype = GalType(GalType.SINGLE)
+
+        '''
         cntZero, cntOne, cntTwo = 0, 0, 0
         for l in [len(fp) for _, fp in self.finPeaks.items()] :
             if l == 0 :
@@ -801,6 +910,9 @@ class Galaxy () :
             self.gtype = GalType(GalType.SINGLE)
         else :
             self.gtype = GalType(GalType.NO_PEAK)
+        '''
+
+        batchlog.info("{} --> Verdict : {}".format(self.objid, self.gtype))
 
     #############################################################################################################
     #############################################################################################################
@@ -842,7 +954,7 @@ class Galaxy () :
     def getCutoutRegSeries (self, bands="", asDict=False) :
         """ Flattens the hull region for cutout image """
 
-        cutRegFlat = {b:cut[Galaxy.twoDIndexer(self.hullRegs[b])].flatten()
+        cutRegFlat = {b:cut[Galaxy.coodIndexer(self.hullRegs[b])].flatten()
                     for b, cut in
                     self.getCutout(bands, True).items()}
         return Galaxy.copyRet(cutRegFlat, bands, asDict)
@@ -868,7 +980,7 @@ class Galaxy () :
     def getSmoothRegSeries (self, bands="", asDict=False) :
         """ Flattens the hull region for smoothed image"""
 
-        smoothRegFlat = {b:img[Galaxy.twoDIndexer(self.hullRegs[b])].flatten()
+        smoothRegFlat = {b:img[Galaxy.coodIndexer(self.hullRegs[b])].flatten()
                         for b,img in
                         self.getSmooth(bands, False, True).items()}
 
@@ -880,24 +992,40 @@ class Galaxy () :
         hullMarks = self.getSmooth(bands, True, True)
         for b, hi in Galaxy.stripDict(self.hullInds, bands).items() :
             img = hullMarks[b]
-            img[Galaxy.twoDIndexer(hi)] = np.array(Galaxy.hullMarker)
+            img[Galaxy.coodIndexer(hi)] = np.array(Galaxy.hullMarker)
             if sig :
                 img[img[...,0] > self.gaussParams[b][2]] = np.array(Galaxy.signalMarker)
 
         return Galaxy.copyRet(hullMarks, bands, asDict)
 
+    def getPeaksMarked (imgs, peakDict) :
+        """ Helper function to mark the peaks """
+
+        for b, pks in peakDict.items() :
+            for pk in pks :
+                imgs[b][pk] = np.array(Galaxy.peakMarker)
+
     def getGradPeaksMarked (self, bands="", hull=False, asDict=False) :
         """
-        Returns a copy of the smoothed image of the specified band(s) with peaks marked
+        Returns a copy of the smoothed image of the specified band(s)
+        with raw peaks from SGA, marked.
         Additionally, if hull is set, then the hull is marked as well
         """
 
-        peakMarks = self.getHullMarked(bands, False, True) if hull else self.getSmooth(bands, True, True)
-        for b,pks in Galaxy.stripDict(self.gradPeaks, bands).items() :
-            for pk in pks :
-                peakMarks[b][pk] = np.array(Galaxy.peakMarker)
+        imgs = self.getHullMarked(bands, False, True) if hull else self.getSmooth(bands, True, True)
+        Galaxy.getPeaksMarked(imgs, Galaxy.stripDict(self.gradPeaks, bands))
+        return Galaxy.copyRet(imgs, bands, asDict)
 
-        return Galaxy.copyRet(peakMarks, bands, asDict)
+    def getFinPeaksMarked (self, bands="", hull=False, asDict=False) :
+        """
+        Returns a copy of the smoothed image of the specified band(s)
+        with classified peaks marked
+        Additionally, if hull is set, then the hull is marked as well
+        """
+
+        imgs = self.getHullMarked(bands, False, True) if hull else self.getSmooth(bands, True, True)
+        Galaxy.getPeaksMarked(imgs, Galaxy.stripDict(self.finPeaks, bands))
+        return Galaxy.copyRet(imgs, bands, asDict)
 
     def getHistAxes (info, constrictHist, invHist) :
         """ Helper function to return the axes for the plot """

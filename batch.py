@@ -262,6 +262,9 @@ class Batch () :
             g.hullRegion()
             g.distInfo()
             g.filter()
+            g.fitGaussian()
+            g.cutoffNoise()
+            g.sga()
             runlog.info("{} --> Processed".format(g.objid))
 
         runlog.info ("Processed currently monitoring batch")
@@ -276,22 +279,48 @@ class Batch () :
 
         runlog.info ("Classifying currently monitoring batch")
         for g in self.galaxies :
-            g.fitGaussian()
-            g.searchRegion()
-            g.sga()
-            g.classify()
-            runlog.info("{} --> Classified".format(g.objid))
+            g.verdict()
+            runlog.info("{} --> Classified : {}".format(g.objid, g.gtype))
 
         runlog.info ("Classified currently monitoring batch")
 
     #############################################################################################################
     #############################################################################################################
 
+    def genResults (self) :
+        """
+        Generates the result for every galaxy in the batch -
+        Plots the smoothed image with hull boundary and peaks, if any
+        """
+
+        resPath = os.path.join(self.batchFold, "Results")
+        if not os.path.isdir(resPath) :
+            os.mkdir(resPath)
+
+        runlog.info ("Generating results for currently monitoring batch")
+        for g in self.galaxies :
+            for b in g.bands :
+                if b not in "ugirz" :
+                    continue
+
+                img = g.getFinPeaksMarked(b, True)
+                plt.imshow(img)
+                plt.axis('off')
+                plt.savefig (os.path.join(resPath, "{}-{}_result.png".format(g.objid, b)),
+                            bbox_inches='tight',
+                            pad_inches=0)
+                plt.close()
+                runlog.info("{} --> Generated plot".format(g.objid))
+
+        runlog.info ("Generated results for currently monitoring batch")
+
     def procDiagnose (self, constrictHist=False, invHist=False) :
-        """Generates the following for each galaxy in each band -
-            1. Peaks with enclosing hull
-            2. Histogram of smoothed image
-            3. Histogram of hull region"""
+        """
+        Generates the following for filtered galaxies only -
+            1. Hull boundary
+            2. Hull with signal
+            3. Scatter plot of intensity distribution and gaussian fit
+        """
 
         diagPath = os.path.join(self.batchFold, "Proc-Diag")
         if not os.path.isdir(diagPath) :

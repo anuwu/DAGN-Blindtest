@@ -28,21 +28,21 @@ warnings.simplefilter('ignore', category=OptimizeWarning)
 # Removes the 'RADECSYS deprecated' warning from astropy cutout
 warnings.simplefilter('ignore', category=AstropyWarning)
 # Override system recursion limit for DFS
-sys.setrecursionlimit (10**6)
+sys.setrecursionlimit(10**6)
 
 # Setting default logger for the module
-batchlog = log.getLogger (__name__)
+batchlog = log.getLogger(__name__)
 batchlog.setLevel(log.WARNING)
 fileHandler = log.FileHandler("./galaxy.log", mode='w')
-fileHandler.setFormatter (log.Formatter ("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
+fileHandler.setFormatter(log.Formatter("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
 
 # Ensures only one file handler is attached to the default logger
 for h in batchlog.handlers :
-    batchlog.removeHandler (h)
+    batchlog.removeHandler(h)
 
 batchlog.addHandler(fileHandler)
-batchlog.info ("Welcome!")
+batchlog.info("Welcome!")
 
 class GalType (Enum) :
     """
@@ -229,7 +229,7 @@ class Galaxy () :
         ######################################################################
         self.cutouts = {b:None for b in bands if b in "ugriz"}
 
-        batchlog.info ("{} --> Initialised".format(self.objid))
+        batchlog.info("{} --> Initialised".format(self.objid))
 
     def __str__ (self) :
         """ Galaxy object to string """
@@ -327,11 +327,11 @@ class Galaxy () :
 
         # Bands that remain to be downloaded. Ignores invalid bands in 'band' attribute
         toDown = [b for b in self.bands if b in "ugriz" and not os.path.exists(self.getFitsPath(b))]
-        batchlog.debug ("toDown = {}".format(toDown))
+        batchlog.debug("toDown = {}".format(toDown))
         if not toDown :
-            batchlog.info ("{} --> FITS files of all bands already downloaded".format(self.objid))
+            batchlog.info("{} --> FITS files of all bands already downloaded".format(self.objid))
             return
-        batchlog.info ("{} --> FITS bands to be downloaded - {}".format(self.objid, toDown))
+        batchlog.info("{} --> FITS bands to be downloaded - {}".format(self.objid, toDown))
 
         # Initialised at constructor
         if self.repoLink is None :
@@ -356,8 +356,8 @@ class Galaxy () :
         for b, dlink in self.downLinks.items() :
             if b in self.bands and b in "ugriz" :
                 # Download only if the FITS file doesn't exist
-                if not os.path.exists (self.getFitsPath(b)) :
-                    self.downloadExtract (b, dlink)
+                if not os.path.exists(self.getFitsPath(b)) :
+                    self.downloadExtract(b, dlink)
                 batchlog.info("{} --> Obtained FITS file for {}-band".format(self.objid, b))
 
     def cutout (self, rad=40) :
@@ -371,21 +371,21 @@ class Galaxy () :
             for a given radius in argument 'rad' """
 
             # In case the FITS file was not downloaded due to any error
-            if not os.path.exists (fitsPath) :
-                batchlog.warning ("{} --> No cutout performed as FITS file doesn't exist".format(self.objid))
+            if not os.path.exists(fitsPath) :
+                batchlog.warning("{} --> No cutout performed as FITS file doesn't exist".format(self.objid))
                 return None
 
             try :
-                hdu = fits.open (fitsPath, memmap=False)[0]
+                hdu = fits.open(fitsPath, memmap=False)[0]
             except Exception as e :
                 batchlog.error("{} --> Error in loading FITS file for {}-band".format(self.objid, b))
                 raise e
 
             wcs = WCS(hdu.header)
-            position = SkyCoord(ra=Angle (self.cood[0], unit=u.deg),
-                            dec=Angle (self.cood[1], unit=u.deg))
-            size = u.Quantity ((rad, rad), u.arcsec)
-            return Cutout2D (hdu.data, position, size, wcs=wcs).data
+            position = SkyCoord(ra=Angle(self.cood[0], unit=u.deg),
+                            dec=Angle(self.cood[1], unit=u.deg))
+            size = u.Quantity((rad, rad), u.arcsec)
+            return Cutout2D(hdu.data, position, size, wcs=wcs).data
 
         for b in self.bands :
             ######################################################################
@@ -393,7 +393,7 @@ class Galaxy () :
             # hasn't already been loaded in memory
             ######################################################################
             if b in "ugriz" and self.cutouts[b] is None :
-                self.cutouts[b] = cutout_b (self.getFitsPath(b))
+                self.cutouts[b] = cutout_b(self.getFitsPath(b))
             batchlog.info("{} --> Got cutout for {}-band".format(self.objid, b))
 
     def smoothen (self, reduc=2, sgx=5, sgy=5) :
@@ -444,7 +444,7 @@ class Galaxy () :
             ######################## Step 7 ################## Step 6 #####################
             return (lambda d:cv2.GaussianBlur(np.floor(255*(lambda x,mn,mx : (x-mn)/(mx-mn))
                                                            (d, np.min(d), np.max(d))
-                                                    ).astype(np.uint8), (sgx,sgy),0
+                                                    ).astype(np.uint8), (sgx, sgy),0
                     ))(imgNorm.data)
 
         for b, cut in self.cutouts.items() :
@@ -490,7 +490,7 @@ class Galaxy () :
             # Step 2a
             cannyHull = [cv2.convexHull(np.flip(cannyEdges, axis=1))]
             # Step 2b
-            fullImg = cv2.drawContours (Galaxy.toThreeChannel(img), cannyHull, 0,
+            fullImg = cv2.drawContours(Galaxy.toThreeChannel(img), cannyHull, 0,
                                     Galaxy.hullMarker, 1, 8)
             # Step 2c
             hullInds = np.argwhere((fullImg == np.array(Galaxy.hullMarker)).all(axis=2))
@@ -557,7 +557,7 @@ class Galaxy () :
                         not self.imgs[b].size or\
                         not self.hullInds[b].size or\
                         not self.hullRegs[b].size or\
-                        not Galaxy.isPointIn ((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b])
+                        not Galaxy.isPointIn((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b])
                 batchlog.info("{} --> Calculated filtrate for {}-band".format(self.objid, b))
 
     def fitGaussian (self, noiseSig=10, hwhmSig=2) :
@@ -585,9 +585,9 @@ class Galaxy () :
 
             # try block to fit the gaussian
             try :
-                gaussPeak, sigma = curve_fit (gaussian, y.flatten(), x.flatten(), p0=[np.max(x), np.max(y)/20])[0]
+                gaussPeak, sigma = curve_fit(gaussian, y.flatten(), x.flatten(), p0=[np.max(x), np.max(y)/20])[0]
             except :
-                batchlog.warning ("Fault in curve_fit")
+                batchlog.warning("Fault in curve_fit")
                 return ()
 
             return gaussPeak, sigma, np.floor(gaussPeak/noiseSig), np.floor(gaussPeak/hwhmSig)
@@ -702,8 +702,8 @@ class Galaxy () :
             (boundPeak or len(Galaxy.neighsInReg(pk, searchReg, 1)) == 8) and\
             (not highPeak or gradKey(pk) >= hwhm) and\
             (avgNoise is None or np.mean([gradKey(p)
-                                            for p in
-                                            ([pk] + Galaxy.neighsInReg(pk, searchReg, 1))
+                                            for p
+                                            in ([pk] + Galaxy.neighsInReg(pk, searchReg, 1))
                                             ])/avgNoise > 3)
 
             # No need to keep track of iteration number
@@ -776,11 +776,11 @@ class Galaxy () :
             # Mark current index as visited
             vis[ind] = True
             # Append current index to the present component that is being created
-            comp.append (ind)
+            comp.append(ind)
             # For each neighbor, if it hasn't already been visited, visit it
-            for i in dfsNeighs (ind, reg) :
+            for i in dfsNeighs(ind, reg) :
                 if not vis[i]:
-                    dfs (i, reg, vis, comp)
+                    dfs(i, reg, vis, comp)
 
         def connComps (reg) :
             """ Returns the connected components in a region """
@@ -882,6 +882,15 @@ class Galaxy () :
 
     #############################################################################################################
     #############################################################################################################
+
+    def getResLine (self) :
+        """ Returns a string which is formatted in the same way
+        as one line of the result .csv file of the owning batch """
+
+        return "{},\"{}\",\"{}\",{}".format(self.objid,
+                                        self.finPeaks['r'],
+                                        self.finPeaks['i'],
+                                        self.gtype)
 
     def getFitsPath (self, b) :
         """

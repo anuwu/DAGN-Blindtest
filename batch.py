@@ -14,8 +14,8 @@ galaxy = reload(galaxy)
 Galaxy = galaxy.Galaxy
 
 # Create the /Logs folder for the root directory if it doesn't already exist
-if not os.path.isdir ("Logs") :
-    os.mkdir ("Logs")
+if not os.path.isdir("Logs") :
+    os.mkdir("Logs")
 
 def dateFmt () :
     """Returns the date component of the run log file"""
@@ -25,19 +25,20 @@ def dateFmt () :
     return dtStr
 
 # Set the logger for this run of classifications
-runlog = log.getLogger (__name__)
-runlog.setLevel (log.INFO)
+runlog = log.getLogger(__name__)
+runlog.setLevel(log.INFO)
 runLogPath = "Logs/run_{}.log".format(dateFmt())
-fileHandler = log.FileHandler (runLogPath)
-fileHandler.setFormatter (log.Formatter ("%(levelname)s : RUN_INIT : %(asctime)s : %(message)s",
+fileHandler = log.FileHandler(runLogPath)
+fileHandler.setFormatter(log.Formatter("%(levelname)s : RUN_INIT : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
+streamHandler = log.StreamHandler()
 
 # Ensures that there is only one fileHandler for the current logger
 for h in runlog.handlers :
-    runlog.removeHandler (h)
+    runlog.removeHandler(h)
 
-runlog.addHandler (fileHandler)
-runlog.info("Batch runner started!")
+runlog.addHandler(fileHandler)
+runlog.debug("Batch runner started!")
 
 sys.setrecursionlimit(10**6)
 
@@ -54,11 +55,11 @@ class Batch () :
             batch = Batch(batchName, (batchName + ".csv") if csv is None else csv,
                     bands, rad)
         except (FileNotFoundError, ValueError) as e :
-            print ("Error initialising batch!")
+            print("Error initialising batch!")
             print("Kindly check the latest message in the logfile '{}' for a fix.".format(
                 os.path.join(os.getcwd(), runLogPath)
             ))
-            print ("Abort!")
+            print("Abort!")
             batch = None
         finally :
             return batch
@@ -70,24 +71,6 @@ class Batch () :
     #############################################################################################################
     #############################################################################################################
 
-    def __setBatchLogger__ (self) :
-        """
-        Sets the correct fileHandler location in the galaxy.py logger
-        for the batch of galaxies that will be processsed. Also deletes the
-        default logger in it if it exists
-        """
-
-        fh = log.FileHandler(self.logPath)
-        fh.setFormatter (log.Formatter ("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
-                                 datefmt='%m/%d/%Y %I:%M:%S %p'))
-
-        # Ensuring only one fileHandler is associated with the batch logger
-        for h in galaxy.batchlog.handlers :
-            galaxy.batchlog.removeHandler (h)
-
-        galaxy.batchlog.addHandler (fh)
-        galaxy.batchlog.info ("Logger (re)set!")
-
     def __prelude__ (self) :
         """
         Sets up files and folders and checks for existence of
@@ -96,11 +79,11 @@ class Batch () :
 
         # To access fileHandler of the logger
         global fileHandler
-        fileHandler.setFormatter (log.Formatter ("%(levelname)s : RUN_INIT : %(asctime)s : %(message)s",
+        fileHandler.setFormatter(log.Formatter("%(levelname)s : RUN_INIT : %(asctime)s : %(message)s",
                              datefmt='%m/%d/%Y %I:%M:%S %p'))
 
         # Checks if the /Data directory has been created at the root directory
-        runlog.info("Checking environment for the new batch.")
+        runlog.debug("Checking environment for the new batch.")
         if not os.path.isdir("Data") :
             runlog.critical("Data folder not found!\n\n{}".format(Batch.logFixFmt(
                 "Please create a folder named 'Data' in the notebook directory and rerun!"
@@ -108,7 +91,7 @@ class Batch () :
             raise FileNotFoundError
 
         # Checks if batchName folder exists in /Data
-        if not os.path.isdir (self.batchFold) :
+        if not os.path.isdir(self.batchFold) :
             runlog.critical("Batch folder not found\n\n{}".format(Batch.logFixFmt(
                 "Please create a folder for the batch at '{}' and rerun!".format(self.batchFold)
             )))
@@ -120,7 +103,7 @@ class Batch () :
         # folder
         ######################################################################
         runlog.debug("{} and {}".format(self.csvName, self.csvPath))
-        if not os.path.exists (self.csvPath) :
+        if not os.path.exists(self.csvPath) :
             runlog.critical("Batch .csv file at path '{}' not found\n\n{}".format(self.batchFold, Batch.logFixFmt(
                 "Please supply the name of the appropriate .csv file and rerun!"
             )))
@@ -130,24 +113,78 @@ class Batch () :
         # Changing name of the run log fileHandler to reflect the batch it is
         # presently handling
         ######################################################################
-        runlog.info("Valid environment! Changing log format to handle batch '{}'".format(self.batchName))
-        fileHandler.setFormatter (log.Formatter ("%(levelname)s : {} : %(asctime)s : %(message)s".format(self.batchName),
+        runlog.debug("Valid environment! Changing log format to handle batch '{}'".format(self.batchName))
+        fileHandler.setFormatter(log.Formatter("%(levelname)s : {} : %(asctime)s : %(message)s".format(self.batchName),
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
 
         # Ensures only one fileHandler exists
         for h in runlog.handlers :
             runlog.removeHandler(h)
         runlog.addHandler(fileHandler)
+        runlog.addHandler(streamHandler)
 
         ######################################################################
         # Creates a /FITS folder in the batch folder where all the FITS files will
         # be stored
         ######################################################################
-        if not os.path.exists (self.fitsFold) :
-            os.mkdir (self.fitsFold)
-            runlog.info("Created FITS folder for batch")
+        if not os.path.exists(self.fitsFold) :
+            os.mkdir(self.fitsFold)
+            runlog.debug("Created FITS folder for batch")
         else :
-            runlog.info("FITS folder for the batch already exists")
+            runlog.debug("FITS folder for the batch already exists")
+
+    def __setBatchLogger__ (self) :
+        """
+        Sets the correct fileHandler location in the galaxy.py logger
+        for the batch of galaxies that will be processsed. Also deletes the
+        default logger in it if it exists
+        """
+
+        fh = log.FileHandler(self.logPath)
+        fh.setFormatter(log.Formatter("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
+                                 datefmt='%m/%d/%Y %I:%M:%S %p'))
+
+        # Ensuring only one fileHandler is associated with the batch logger
+        for h in galaxy.batchlog.handlers :
+            galaxy.batchlog.removeHandler(h)
+
+        galaxy.batchlog.addHandler(fh)
+
+        galaxy.batchlog.info("Logger (re)set!")
+
+    def __setClassList__ (self) :
+        """ Sets the list of galaxies to classify -
+            1. Reads the main .csv file
+            2. Reads the .csv file which contains results of
+            already classified galaxies
+            3. The set difference of (1) and (2) are the galaxies
+            yet to be classified
+        """
+
+        # try block to read the master .csv file
+        try :
+            df = pd.read_csv(self.csvPath, dtype=object, usecols=["objID", "ra", "dec"])
+        except ValueError as e :
+            runlog.critical("Invalid columns in .csv file\n\n{}".format(Batch.logFixFmt(
+                "Please ensure columns 'objID', 'ra' and 'dec' are present in the .csv \
+                file (in that order) and rerun!"
+                )))
+            raise e
+
+        # try block to read the result .csv file
+        try :
+            resIDs = [] if not os.path.exists(self.resPath) else\
+                    list(pd.read_csv(self.resPath, dtype=object)['objID'])
+        except ValueError as e :
+            runlog.critical("Error in loading result csv file\n\n{}".format(Batch.logFixFmt(
+                "Please ensure the first column in 'objID'. If the file is corrupted, delete \
+                it and rerun!"
+            )))
+
+        self.galaxies = [Galaxy(id, (ra, dec), self.fitsFold, self.bands)
+                        for objid, ra, dec
+                        in zip(df["objID"], df["ra"], df["dec"])
+                        if (id:=str(objid)) not in resIDs]
 
     def __init__ (self, batchName, csvName, bands="ri", rad=40) :
         """
@@ -159,13 +196,11 @@ class Batch () :
 
         self.batchName = batchName
         self.csvName = csvName
-        self.__prelude__ ()
-        runlog.info("Successfully created environment for batch")
+        self.__prelude__()
+        runlog.debug("Successfully created environment for batch")
 
         # Function to check if the band(s) supplied by the user is valid
         areBandsValid = lambda bs : len([b for b in bs if b in "ugriz"]) == len(bs) != 0
-        runlog.debug (bands)
-        runlog.debug (len(bands))
 
         ######################################################################
         # If the bands are not valid, a warning is logged
@@ -179,31 +214,22 @@ class Batch () :
             raise ValueError("Invalid Band. Please use 'ugriz'")
 
         self.bands = bands
-        try :
-            df = pd.read_csv(self.csvPath, dtype=object, usecols=["objID", "ra", "dec"])
-        except ValueError as e :
-            runlog.critical("Invalid columns in .csv file\n\n{}".format(Batch.logFixFmt(
-                "Please ensure columns 'objID', 'ra' and 'dec' are present in the .csv \
-                file (in that order) and rerun!"
-                )))
-            raise e
 
         ######################################################################
         # Sets the logger for the batch. This log file exists in the
         # batch Folder
         ######################################################################
-        self.__setBatchLogger__ ()
-        runlog.info("Set the batch logger")
+        self.__setBatchLogger__()
+        runlog.debug("Set the batch logger")
 
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # The list comprehension below is where I can insert extra code to start
-        # the classification midway
-        # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        self.__setClassList__()
 
-        self.galaxies = [Galaxy(str(objid), (ra, dec), self.fitsFold, self.bands)
-                        for objid, ra, dec in zip(df["objID"], df["ra"], df["dec"])]
+        runlog.info("Batch successfully initialised. \
+        \n\nThe classifications will be available at {} \
+        \n\nIn the event of any program crash/error, please check the log file at {} for details"\
+        .format(self.resPath, os.path.join(os.getcwd(), runLogPath)))
 
-        runlog.info ("Number of galaxies to process - {}".format(len(self.galaxies)))
+        runlog.info ("Number of galaxies to classify - {}".format(len(self.galaxies)))
 
     def __str__ (self) :
         """ Batch object to string """
@@ -214,11 +240,6 @@ class Batch () :
         return len(self.galaxies)
 
     @property
-    def csvPath (self) :
-        """ Property attribute - Plain name of the csv File """
-        return os.path.join(os.getcwd(), self.batchFold, self.csvName)
-
-    @property
     def batchFold (self) :
         """ Property attribute - Path of the batch folder """
         return os.path.join (os.getcwd(), "Data/", self.batchName)
@@ -226,7 +247,23 @@ class Batch () :
     @property
     def fitsFold (self) :
         """ Property attribute - Path of the FITS folder for the batch """
-        return os.path.join (os.getcwd(), "Data/", self.batchName, "FITS")
+        return os.path.join (self.batchFold, "FITS")
+
+    @property
+    def resFold (self) :
+        """ Property attribute - Path of the folder that contains result images
+        post classificaton """
+        return os.path.join(self.batchFold, "Results")
+
+    @property
+    def csvPath (self) :
+        """ Property attribute - Path of the csv File """
+        return os.path.join(self.batchFold, self.csvName)
+
+    @property
+    def resPath (self) :
+        """ Property attribute - Path of the result .csv file """
+        return os.path.join(self.batchFold, self.csvName[:-4] + "_result.csv")
 
     @property
     def logPath (self) :
@@ -246,7 +283,7 @@ class Batch () :
             except Exception as e :
                 runlog.error("Unknown error while downloading! Please check exception message\n\n{}".format(Batch.logFixFmt(str(e))))
             else :
-                runlog.info("{} --> Downloaded".format(g.objid))
+                runlog.info("{}. {} --> Downloaded".format(i+1, g.objid))
 
         runlog.info("Downloaded currently monitoring batch")
 
@@ -254,13 +291,13 @@ class Batch () :
         """ Loads all the FITS files of the batch into memory """
 
         runlog.info ("Loading currently monitoring batch")
-        for g in self.galaxies :
+        for i, g in enumerate(self.galaxies) :
             try :
                 g.cutout ()
             except Exception as e :
                 runlog.error("Unknown error in loading FITS! Please check exception message\n\n{}".format(Batch.logFixFmt(str(e))))
             else :
-                runlog.info("{} --> Loaded".format(g.objid))
+                runlog.info("{}. {} --> Loaded".format(i+1, g.objid))
 
         runlog.info("Loaded currently monitoring batch")
 
@@ -281,7 +318,7 @@ class Batch () :
         """
 
         runlog.info ("Processing currently monitoring batch")
-        for g in self.galaxies :
+        for i, g in enumerate(self.galaxies) :
             g.smoothen()
             g.hullRegion()
             g.distInfo()
@@ -289,9 +326,9 @@ class Batch () :
             g.fitGaussian()
             g.cutoffNoise()
             g.sga()
-            runlog.info("{} --> Processed".format(g.objid))
+            runlog.info("{}. {} --> Processed".format(i+1, g.objid))
 
-        runlog.info ("Processed currently monitoring batch")
+        runlog.info("Processed currently monitoring batch")
 
     def classifyBatch (self) :
         """
@@ -304,12 +341,28 @@ class Batch () :
             2. Size of the component (Double Galaxies tend to be large)
         """
 
-        runlog.info ("Classifying currently monitoring batch")
-        for g in self.galaxies :
-            g.verdict()
-            runlog.info("{} --> Classified : {}".format(g.objid, g.gtype))
+        # Creating the .csv file for results
+        writeHeader = False if os.path.exists(self.resPath) else True
+        reslog = log.getLogger(self.batchName + "_result")
+        reslog.setLevel(log.INFO)
+        resFH = log.FileHandler(self.resPath)
+        resFH.setFormatter(log.Formatter("%(message)s"))
+        reslog.addHandler(resFH)
+        if writeHeader :
+            reslog.info("objID,r-peaks,i-peaks,verdict")
+            runlog.debug("Created result csv")
+        else :
+            runlog.debug("Result csv already exists")
 
-        runlog.info ("Classified currently monitoring batch")
+        runlog.info("Classifying currently monitoring batch")
+        for i, g in enumerate(self.galaxies) :
+            g.verdict()
+            verd = "{}. {} --> Classified : {}".format(i, g.objid, g.gtype)
+            runlog.info(verd)
+            reslog.info(g.getResLine())
+
+        runlog.info("Classified currently monitoring batch")
+        runlog.info("Please check {} for detailed classification info".format(self.resPath))
 
     def genResults (self) :
         """
@@ -321,8 +374,8 @@ class Batch () :
         if not os.path.isdir(resPath) :
             os.mkdir(resPath)
 
-        runlog.info ("Generating results for currently monitoring batch")
-        for g in self.galaxies :
+        runlog.info("Generating results for currently monitoring batch")
+        for i, g in enumerate(self.galaxies) :
             for b in g.bands :
                 if b not in "ugirz" :
                     continue
@@ -330,18 +383,20 @@ class Batch () :
                 img = g.getFinPeaksMarked(b, True)
                 plt.imshow(img)
                 plt.axis('off')
-                plt.savefig (os.path.join(resPath, "{}-{}_result.png".format(g.objid, b)),
+                plt.savefig(os.path.join(resPath, "{}-{}_result.png".format(g.objid, b)),
                             bbox_inches='tight',
                             pad_inches=0)
                 plt.close()
-                runlog.info("{} --> Generated plot".format(g.objid))
 
-        runlog.info ("Generated results for currently monitoring batch")
+            runlog.info("{}. {} --> Generated plot".format(i+1, g.objid))
+
+        runlog.info("Generated results for currently monitoring batch")
+        runlog.info("Results generated for the batch. Please check the contens of {}".format(self.resFold))
 
     #############################################################################################################
     #############################################################################################################
 
-    def procDiagnose (self, constrictHist=False, invHist=False) :
+    def procDiagnose(self, constrictHist=False, invHist=False) :
         """
         Generates the following for filtered galaxies only -
             1. Hull with signal
@@ -352,8 +407,8 @@ class Batch () :
         if not os.path.isdir(diagPath) :
             os.mkdir(diagPath)
 
-        runlog.info ("Diagnosing currently monitoring batch")
-        for g in self.galaxies :
+        runlog.info("Diagnosing currently monitoring batch")
+        for i, g in enumerate(self.galaxies) :
             for b, filt in g.filtrate.items() :
                 if filt :
                     continue
@@ -367,9 +422,9 @@ class Batch () :
                 argPack = g.getGaussPlot(b)
                 for i in [0, 1, 2] :
                     plt.plot(*argPack[i]["args"], **argPack[i]["kwargs"])
-                plt.savefig (os.path.join(diagPath, "{}-{}_gaussFit.png".format(g.objid, b)))
+                plt.savefig(os.path.join(diagPath, "{}-{}_gaussFit.png".format(g.objid, b)))
                 plt.close()
 
-            runlog.info("{} --> Diagnosed".format(g.objid))
+            runlog.info("{}. {} --> Diagnosed".format(i+1, g.objid))
 
-        runlog.info ("Diagnosed currently monitoring batch")
+        runlog.info("Diagnosed currently monitoring batch")

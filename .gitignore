@@ -1,8 +1,9 @@
 .ipynb_checkpoints/
 __pycache__/
 galaxy.log
-Logs/
-Data/
+Logs/*
+Batches/*/*
 BatchClass.ipynb
 GalaxyClass.ipynb
 
+!Batches/Test/Test.csv

@@ -256,7 +256,8 @@ class Galaxy () :
         tagType = type(bs4.BeautifulSoup('<b class="boldest">Extremely bold</b>' , features = 'lxml').b)
         for c in soup.select('.s') :
             tag = c.contents[0]
-            if tagType == type(tag) and (fitsLinkTag:=str(tag)).find('Get FITS') > -1 :
+            fitsLinkTag = str(tag)
+            if tagType == type(tag) and fitsLinkTag.find('Get FITS') > -1 :
                 break
 
         fitsLinkTag = fitsLinkTag[fitsLinkTag.find('"')+1:]
@@ -274,7 +275,7 @@ class Galaxy () :
             return st[:st.find('"')]
 
         try :
-            dlinks = {(lambda s: s[s.rfind('/') + 7])(lk:=procClass(str(x))) : lk
+            dlinks = {(lambda s: s[s.rfind('/') + 7])(procClass(str(x))) : procClass(str(x))
             for x in
             bs4.BeautifulSoup(requests.get(self.repoLink).text, features = 'lxml').select(".l")[:5]
             }
@@ -433,7 +434,9 @@ class Galaxy () :
             # Step 2
             img[img >= 0] -= np.min(img[img >= 0])
             # Step 3
-            if (vmin:=max(0.1, np.median(img)/reduc)) >= (vmax:=np.max(img)) :
+            vmin = max(0.1, np.median(img)/reduc)
+            vmax = np.max(img)
+            if vmin >= vmax :
                 batchlog.info("{} --> Appreciable intensity not found while smoothing".format(self.objid))
                 return Galaxy.emptyImage()
             # Step 4
@@ -530,9 +533,9 @@ class Galaxy () :
             # counts - Number of pixels with a particular grayscale value
             ######################################################################
             grays, counts = tuple(np.split(np.array([
-                                        [i, uq[1][ag][0]]
+                                        [i, uq[1][np.argwhere(uq[0]==i).flatten()][0]]
                                         for i in range(0,256)
-                                        if (ag:=np.argwhere(uq[0]==i).flatten()).size > 0
+                                        if np.argwhere(uq[0]==i).flatten().size > 0
                                         ]), 2, axis=1))
             return grays, counts
 
@@ -616,7 +619,8 @@ class Galaxy () :
                 4. Repeat above steps 100 times and return average noise """
 
             # If there is no pixel below noise level, then don't calculate it
-            if not (noiseInds:=np.argwhere(img < gaussNoise)).size :
+            noiseInds = np.argwhere(img < gaussNoise)
+            if not noiseInds.size :
                 return None
 
             noiseTot = 0
@@ -716,13 +720,15 @@ class Galaxy () :
                     # is empty, it means that the point has gotten trapped somewhere. This
                     # can occur when the region under consideration is miniscule
                     ######################################################################
-                    if not (ns:=Galaxy.neighsInReg(pt, searchReg, tol)) :
+                    ns = Galaxy.neighsInReg(pt, searchReg, tol)
+                    if not ns :
                         break
 
                     # Step 2
                     mxn = max(ns, key = gradKey)
                     # Step 3
-                    pt = mxn if gradKey(mxn) > gradKey(pk:=pt) else None # Step 4 (Termination)
+                    pk = pt
+                    pt = mxn if gradKey(mxn) > gradKey(pt) else None # Step 4 (Termination)
 
                 ######################################################################
                 # If peak already exists, increase its frequency count
@@ -766,9 +772,9 @@ class Galaxy () :
         # Returns the indices of neighboring points (specified by index 'ind')
         # in a region 'reg'
         ######################################################################
-        dfsNeighs = lambda ind, reg : [ni[0][0] for pt in
+        dfsNeighs = lambda ind, reg : [Galaxy.ptIndex(pt, reg)[0][0] for pt in
                                     Galaxy.neighsInReg(reg[ind], reg, 1)
-                                    if (ni:=Galaxy.ptIndex(pt, reg)).size > 0]
+                                    if Galaxy.ptIndex(pt, reg).size > 0]
 
         def dfs (ind, reg, vis, comp) :
             """ Visiting function for depth first search """
@@ -792,7 +798,8 @@ class Galaxy () :
 
             # Seed indices that each returns one connected component
             while seed < noPts :
-                dfs(seed, reg, vis, comp:=[])
+                comp = []
+                dfs(seed, reg, vis, comp)
                 # Mapping indices to mixel coordinates
                 comps.append(np.array([
                     reg[i] for i in comp
@@ -834,8 +841,8 @@ class Galaxy () :
             # 1. Ascending distance to the centre
             # 2. Descending size of region
             ######################################################################
-            regLess = lambda c1, c2 : (d1:=comp_dist[c1]) < (d2:=comp_dist[c2]) \
-                    or (d1 == d2 and len(comps[c1]) > len(comps[c2]))
+            regLess = lambda c1, c2 : comp_dist[c1] < comp_dist[c2] \
+                    or (comp_dist[c1] == comp_dist[c2] and len(comps[c1]) > len(comps[c2]))
 
             # Sort the list of indices according to the comparator 'regless'
             compInds = sorted(range(0, len(comps)), key=Galaxy.comparatorKey(regLess))

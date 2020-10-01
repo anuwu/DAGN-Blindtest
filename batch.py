@@ -183,10 +183,10 @@ class Batch () :
                 it and rerun!"
             )))
 
-        self.galaxies = [Galaxy(id, (ra, dec), self.fitsFold, self.bands)
+        self.galaxies = [Galaxy(str(objid), (ra, dec), self.fitsFold, self.bands)
                         for objid, ra, dec
                         in zip(df["objID"], df["ra"], df["dec"])
-                        if (id:=str(objid)) not in resIDs]
+                        if str(objid) not in resIDs]
 
     def __init__ (self, batchName, csvName, bands="ri", rad=40) :
         """

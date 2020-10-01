@@ -303,10 +303,9 @@ class Batch () :
 
         runlog.info("Loaded currently monitoring batch")
 
-    def processBatch (self) :
+    def classifyBatch (self) :
         """
-        For each galaxy in the batch's list, processes it
-        to the pre-classification stage. Performs the following -
+        For each galaxy in the batch's list, performs the following -
             1. Cutout from the FITS file
             2. Smoothen raw cutout data
             3. Find the hull region where peak searching is done
@@ -317,30 +316,7 @@ class Batch () :
             6. Fits a gaussian to the intensity distribution
             7. Computes the noise/signal cutoff
             8. Performs stochastic gradient ascent to find a set of raw peaks
-        """
-
-        runlog.info ("Processing currently monitoring batch")
-        for i, g in enumerate(self.galaxies) :
-            g.smoothen()
-            g.hullRegion()
-            g.distInfo()
-            g.filter()
-            g.fitGaussian()
-            g.cutoffNoise()
-            g.sga()
-            runlog.info("{}. {} --> Processed".format(i+1, g.objid))
-
-        runlog.info("Processed currently monitoring batch")
-
-    def classifyBatch (self) :
-        """
-        Performs DFS, finds patches of signals that are connected to each other
-        (from the connected components returned by DFS) and classifies based on
-        the following metrics (in order of priority) -
-            1. Distance of the component from the centre of the image
-                -> This is important because SDSS catalogs objects by centering
-                them in frame
-            2. Size of the component (Double Galaxies tend to be large)
+            9. Performs the final classification based on connected components
         """
 
         # Creating the .csv file for results
@@ -349,7 +325,12 @@ class Batch () :
         reslog.setLevel(log.INFO)
         resFH = log.FileHandler(self.resPath)
         resFH.setFormatter(log.Formatter("%(message)s"))
+
+        # Ensuring only one file handler exists
+        for h in reslog.handlers :
+            reslog.removeHandler(h)
         reslog.addHandler(resFH)
+
         if writeHeader :
             reslog.info("objID,r-peaks,i-peaks,verdict")
             runlog.debug("Created result csv")
@@ -358,8 +339,15 @@ class Batch () :
 
         runlog.info("Classifying currently monitoring batch")
         for i, g in enumerate(self.galaxies) :
+            g.smoothen()
+            g.hullRegion()
+            g.distInfo()
+            g.filter()
+            g.fitGaussian()
+            g.cutoffNoise()
+            g.sga()
             g.verdict()
-            verd = "{}. {} --> Classified : {}".format(i, g.objid, g.gtype)
+            verd = "{}. {} --> Classified : {}".format(i+1, g.objid, g.gtype)
             runlog.info(verd)
             reslog.info(g.getResLine())
 
@@ -393,7 +381,7 @@ class Batch () :
             runlog.info("{}. {} --> Generated plot".format(i+1, g.objid))
 
         runlog.info("Generated results for currently monitoring batch")
-        runlog.info("Results generated for the batch. Please check the contens of {}".format(self.resFold))
+        runlog.info("Results generated for the batch. Please check the contents of {}".format(self.resFold))
 
     #############################################################################################################
     #############################################################################################################

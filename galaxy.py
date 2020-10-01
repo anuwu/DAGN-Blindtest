@@ -111,14 +111,14 @@ class Galaxy () :
     def comparatorKey (cmp) :
         """Convert a cmp= function into a key= function"""
         class K:
-            def __init__(self, val, *args):
-                self.val = val
+            def __init__(self, key, *args):
+                self.key = key
             def __lt__(self, other):
-                return cmp(self.val, other.val)
+                return cmp(self.key, other.key)
             def __gt__(self, other):
                 return not self.__lt__(other) and not self.__eq__(other)
             def __eq__(self, other):
-                return not self.__lt__(other) and not cmp(other.val, self.val)
+                return not self.__lt__(other) and not cmp(other.key, self.key)
             def __le__(self, other):
                 return self.__lt__(other) or self.__eq__(other)
             def __ge__(self, other):
@@ -252,6 +252,7 @@ class Galaxy () :
             self.repoLink = None
             return
 
+        # Finding the tag which contains the FITS repository link
         tagType = type(bs4.BeautifulSoup('<b class="boldest">Extremely bold</b>' , features = 'lxml').b)
         for c in soup.select('.s') :
             tag = c.contents[0]
@@ -273,9 +274,9 @@ class Galaxy () :
             return st[:st.find('"')]
 
         try :
-            dlinks = {(lambda s: s[s.rfind('/') + 7])(procClass(str(x))) : procClass(str(x))
+            dlinks = {(lambda s: s[s.rfind('/') + 7])(lk:=procClass(str(x))) : lk
             for x in
-            bs4.BeautifulSoup(requests.get(self.repoLink).text, features = 'lxml').select(".l")[0:5]
+            bs4.BeautifulSoup(requests.get(self.repoLink).text, features = 'lxml').select(".l")[:5]
             }
         except Exception as e :
             batchlog.error("{} --> Error in obtaining band download links".format(self.objid))
@@ -292,13 +293,14 @@ class Galaxy () :
         # Download path for the .bz2
         dPath = os.path.join(self.fitsFold, dlink[dlink.rfind('/')+1:])
 
+        # try block to download the .bz2
         try :
-            # Downloading .bz2 to 'dPath'
             urllib.request.urlretrieve(dlink, dPath)
         except Exception as e :
             batchlog.error("{} --> Error in obtaining .bz2 for {} band".format(self.objid, b))
             raise e
 
+        # try block to read and extract .bz2
         try :
             zipf = bz2.BZ2File(dPath)
             data = zipf.read()
@@ -387,8 +389,8 @@ class Galaxy () :
 
         for b in self.bands :
             ######################################################################
-            # Considers valid bands only and does cutout only if dict[band] is
-            # still None as I/O is costly
+            # Considers valid bands only and does cutout only if cutout of that band
+            # hasn't already been loaded in memory
             ######################################################################
             if b in "ugriz" and self.cutouts[b] is None :
                 self.cutouts[b] = cutout_b (self.getFitsPath(b))
@@ -476,9 +478,10 @@ class Galaxy () :
             'img' is never None when this function is called """
 
             # Step 1
-            # Lambda function for finding edges returned by Canny
-            cannyEdges = (lambda s,l,h : np.argwhere(cv2.Canny(s, l, h) == 255))\
-                        (img, Galaxy.cannyLow, Galaxy.cannyHigh)
+            # Finding edges returned by Canny
+            cannyEdges = np.argwhere(cv2.Canny(img,
+                                            Galaxy.cannyLow,
+                                            Galaxy.cannyHigh) == 255)
 
             # There are no well defined edges if 'cannyEdges' is empty
             if not cannyEdges.size :
@@ -487,9 +490,8 @@ class Galaxy () :
             # Step 2a
             cannyHull = [cv2.convexHull(np.flip(cannyEdges, axis=1))]
             # Step 2b
-            fullImg = cv2.drawContours (Galaxy.toThreeChannel(img),
-                                    cannyHull,
-                                    0, Galaxy.hullMarker, 1, 8)
+            fullImg = cv2.drawContours (Galaxy.toThreeChannel(img), cannyHull, 0,
+                                    Galaxy.hullMarker, 1, 8)
             # Step 2c
             hullInds = np.argwhere((fullImg == np.array(Galaxy.hullMarker)).all(axis=2))
 
@@ -546,7 +548,6 @@ class Galaxy () :
             3. Hull boundary is empty                               --> No sharp object in the image, mostly dark
             4. Hull region is empty                                 --> Object too small to conduct SGA
             5. Centre is not in hull region                         --> Hull encloses an object with a different SDSS objID
-            6. Hull region                                          --> Region encloses more than (100 - per)% of the image. Signifies very noisy image
         If true, do not classify. Finding an object/signal is highly improbable
         """
 
@@ -555,9 +556,8 @@ class Galaxy () :
                 self.filtrate[b] = self.cutouts[b] is None or\
                         not self.imgs[b].size or\
                         not self.hullInds[b].size or\
-                        not self.hullRegs[b].size # or\
-                        # not Galaxy.isPointIn ((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b]) or\
-                        # (lambda x,y : 100*(x-y)/x < per)(len(self.imgs[b].flatten()), len(self.hullRegs[b]))
+                        not self.hullRegs[b].size or\
+                        not Galaxy.isPointIn ((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b])
                 batchlog.info("{} --> Calculated filtrate for {}-band".format(self.objid, b))
 
     def fitGaussian (self, noiseSig=10, hwhmSig=2) :
@@ -583,13 +583,14 @@ class Galaxy () :
             x, y = grays[ming:], counts[ming:]
             gaussian = lambda z, gp, sg : gp*np.exp(-np.square(z/(2*np.pi*sg)))
 
+            # try block to fit the gaussian
             try :
                 gaussPeak, sigma = curve_fit (gaussian, y.flatten(), x.flatten(), p0=[np.max(x), np.max(y)/20])[0]
             except :
                 batchlog.warning ("Fault in curve_fit")
                 return ()
 
-            return gaussPeak, sigma, np.floor(gaussPeak)/noiseSig, np.floor(gaussPeak/hwhmSig)
+            return gaussPeak, sigma, np.floor(gaussPeak/noiseSig), np.floor(gaussPeak/hwhmSig)
 
         for b, filt in self.filtrate.items() :
             self.gaussParams[b] = () if filt else fitGaussian_b(self.regInfo[b])
@@ -723,14 +724,16 @@ class Galaxy () :
                     # Step 3
                     pt = mxn if gradKey(mxn) > gradKey(pk:=pt) else None # Step 4 (Termination)
 
+                ######################################################################
                 # If peak already exists, increase its frequency count
+                # Otherwise, if the peak is allowed, create a new entry in the dict
+                ######################################################################
                 if pk in peaks :
                     peaks[pk][1] += 1
-                # If validPeak allows the peak, create a new entry in the dict
                 elif validPeak(pk) :
                     peaks[pk] = [gradKey(pk), 1]
 
-            return OrderedDict (sorted (peaks.items(), key=lambda x:x[1][0], reverse=True))
+            return OrderedDict(sorted(peaks.items(), key=lambda x:x[1][0], reverse=True))
 
         for b, filt in self.filtrate.items() :
             self.gradPeaks[b] = Galaxy.emptyPeaks() if filt or not self.searchRegs[b].size\
@@ -741,7 +744,7 @@ class Galaxy () :
 
             batchlog.info("{} --> Performed stochastic gradient ascent {}-band".format(self.objid, b))
 
-    def verdict (self, classType=2) :
+    def verdict (self) :
         """
         Final classification of the image. Works as follows
         1. If filtered or gtype is already set, do not perform SGA
@@ -801,32 +804,7 @@ class Galaxy () :
             # Return the list of components as a list. Each entry is a list of pixel coordinates
             return comps
 
-        def filterPeaks1 (peaks, sreg) :
-            """ Helper function for filtering gradient ascent peaks """
-
-            # Return simply for 0 or 1 peak
-            if not peaks :
-                return []
-            if len(peaks) == 1 :
-                return list(peaks)
-
-            # Obtain connected components
-            comps = connComps(sreg)
-
-            # Mapping which component each peak belongs to
-            pk_comp = {p:i for i, c in enumerate(comps) for p in peaks if Galaxy.isPointIn(p, c)}
-            # Acquiring the top two brightest peaks
-            top = list(peaks)[:2]
-            p1, p2 = top[0], top[1]
-
-            # If part of the same component then return both
-            if pk_comp[p1] == pk_comp[p2] :
-                return top
-            # Otherwise return the one which belongs to the larger connected component
-            else :
-                return [p1 if len(comps[pk_comp[p1]]) > len(comps[pk_comp[p2]]) else p2]
-
-        def filterPeaks2 (peaks, sreg, imShape, imKey, hwhm, distGrade=10) :
+        def filterPeaks (peaks, sreg, imShape, imKey, hwhm, distGrade=10) :
             """ Helper function for filtering gradient ascent peaks """
 
             # Return simply for 0 or 1 peak
@@ -878,39 +856,27 @@ class Galaxy () :
         # Filtered object means no peak
         for b, gp in self.gradPeaks.items() :
             self.finPeaks[b] = [] if self.filtrate[b] or not gp \
-                                else (filterPeaks1(gp, self.searchRegs[b]) if classType == 1 \
-                                    else filterPeaks2 (gp,
-                                                    self.searchRegs[b],
-                                                    self.imgs[b].shape,
-                                                    lambda x:self.imgs[b][x],
-                                                    self.gaussParams[b][3]))
+                                else filterPeaks(gp,
+                                            self.searchRegs[b],
+                                            self.imgs[b].shape,
+                                            lambda x:self.imgs[b][x],
+                                            self.gaussParams[b][3])
+
 
         # Mapping filtered peak list in each band to its length
         peakLens = {b:len(fp) for b, fp in self.finPeaks.items()}
         rLen, iLen = peakLens['r'], peakLens['i']
+
+        ######################################################################
+        # Upon experimentation, r-band seems to be most sensitive, however,
+        # concluding that a galaxy is indeed a double source needs to be supported
+        # by i-band as well in order to minimize the false positive rate
+        # (Detected double but actually single).
+        ######################################################################
         if rLen == 2 and iLen in [1, 2] :
             self.gtype = GalType(GalType.DOUBLE)
         else :
             self.gtype = GalType(GalType.SINGLE)
-
-        '''
-        cntZero, cntOne, cntTwo = 0, 0, 0
-        for l in [len(fp) for _, fp in self.finPeaks.items()] :
-            if l == 0 :
-                cntZero += 1
-            elif l == 1 :
-                cntOne += 1
-            else :
-                cntTwo += 1
-
-        # Self-explanatory
-        if cntTwo :
-            self.gtype = GalType(GalType.DOUBLE)
-        elif cntOne :
-            self.gtype = GalType(GalType.SINGLE)
-        else :
-            self.gtype = GalType(GalType.NO_PEAK)
-        '''
 
         batchlog.info("{} --> Verdict : {}".format(self.objid, self.gtype))
 
@@ -923,7 +889,7 @@ class Galaxy () :
         for the band specified by argument 'b'
         """
 
-        return os.path.join (self.fitsFold, "{}-{}.fits".format(self.objid, b))
+        return os.path.join(self.fitsFold, "{}-{}.fits".format(self.objid, b))
 
     def getCutout (self, bands="", asDict=False) :
         """
@@ -948,15 +914,16 @@ class Galaxy () :
         """ Flattens the cutout image """
 
         cutFlat = {b:cut.flatten()
-                for b, cut in self.getCutout(bands, True).items()}
+                for b, cut
+                in self.getCutout(bands, True).items()}
         return Galaxy.copyRet(cutFlat, bands, asDict)
 
     def getCutoutRegSeries (self, bands="", asDict=False) :
         """ Flattens the hull region for cutout image """
 
         cutRegFlat = {b:cut[Galaxy.coodIndexer(self.hullRegs[b])].flatten()
-                    for b, cut in
-                    self.getCutout(bands, True).items()}
+                    for b, cut
+                    in self.getCutout(bands, True).items()}
         return Galaxy.copyRet(cutRegFlat, bands, asDict)
 
     def getSmooth (self, bands="", triple=False, asDict=False) :
@@ -964,7 +931,8 @@ class Galaxy () :
 
         imgs = {b:Galaxy.toThreeChannel(np.zeros_like(self.cutouts[b]) if not img.size else img) if triple
             else np.copy(img)
-            for b, img in Galaxy.stripDict(self.imgs, bands).items()}
+            for b, img
+            in Galaxy.stripDict(self.imgs, bands).items()}
 
         return Galaxy.copyRet(imgs, bands, asDict)
 
@@ -972,8 +940,8 @@ class Galaxy () :
         """ Flattens the smoothed image """
 
         imgFlat = {b:img.flatten()
-                for b, img in
-                self.getSmooth(bands, False, True).items()}
+                for b, img
+                in self.getSmooth(bands, False, True).items()}
 
         return Galaxy.copyRet(imgFlat, bands, asDict)
 
@@ -981,8 +949,8 @@ class Galaxy () :
         """ Flattens the hull region for smoothed image"""
 
         smoothRegFlat = {b:img[Galaxy.coodIndexer(self.hullRegs[b])].flatten()
-                        for b,img in
-                        self.getSmooth(bands, False, True).items()}
+                        for b,img
+                        in self.getSmooth(bands, False, True).items()}
 
         return Galaxy.copyRet(smoothRegFlat, bands, asDict)
 
@@ -1049,8 +1017,10 @@ class Galaxy () :
 
     def getGaussPlot (self, bands="", asDict=False) :
         """
-        Returns the axes data for the inverse intensity scatter,
-        fit gaussian curve and cutoff level
+        Returns the axes data for the following plots in order -
+            1. Intensity distribution scatter plot
+            2. Fit gaussian curve
+            3. Noise cutoff
         """
 
         def getGaussArgPack (info, cutoff, divs=1000) :
@@ -1071,6 +1041,7 @@ class Galaxy () :
             {"args":(lin, noise*np.ones_like(lin), '--k'), "kwargs":{}}]
 
         argPacks = {b:getGaussArgPack(self.regInfo[b], self.gaussParams[b])
-                    for b, filt in self.filtrate.items() if not filt}
+                    for b, filt
+                    in self.filtrate.items() if not filt}
 
         return Galaxy.copyRet(argPacks, bands, asDict)

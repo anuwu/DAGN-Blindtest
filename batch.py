@@ -42,10 +42,13 @@ runlog.info("Batch runner started!")
 sys.setrecursionlimit(10**6)
 
 class Batch () :
-    """Class that defines a batch of SDSS objIDs on which classifcation is to be performed"""
+    """
+    Class that loads the FITS data corresponding to a .csv file of SDSS objIDs
+    and performs DAGN classification on them
+    """
 
     def getBatch (batchName, bands="ri", rad=40, csv=None) :
-        """Class method to get a batch"""
+        """ Class method to get a batch """
 
         try :
             batch = Batch(batchName, (batchName + ".csv") if csv is None else csv,
@@ -61,16 +64,18 @@ class Batch () :
             return batch
 
     def logFixFmt (fix, k=50) :
-        """Formats error messages for the run logger"""
+        """ Formats error messages for the run logger """
         return  2*(k*"#" + '\n') + txwr(width=k).fill(text=fix) + '\n' + 2*(k*"#" + '\n')
 
     #############################################################################################################
     #############################################################################################################
 
     def __setBatchLogger__ (self) :
-        """Sets the correct fileHandler location in the galaxy.py logger
+        """
+        Sets the correct fileHandler location in the galaxy.py logger
         for the batch of galaxies that will be processsed. Also deletes the
-        default logger in it if it exists"""
+        default logger in it if it exists
+        """
 
         fh = log.FileHandler(self.logPath)
         fh.setFormatter (log.Formatter ("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
@@ -84,8 +89,10 @@ class Batch () :
         galaxy.batchlog.info ("Logger (re)set!")
 
     def __prelude__ (self) :
-        """Sets up files and folders and checks for existence of
-        folder indicated by attribute batchName and the 'csv' filename"""
+        """
+        Sets up files and folders and checks for existence of
+        folder indicated by attribute batchName and the 'csv' filename
+        """
 
         # To access fileHandler of the logger
         global fileHandler
@@ -119,8 +126,10 @@ class Batch () :
             )))
             raise FileNotFoundError
 
+        ######################################################################
         # Changing name of the run log fileHandler to reflect the batch it is
         # presently handling
+        ######################################################################
         runlog.info("Valid environment! Changing log format to handle batch '{}'".format(self.batchName))
         fileHandler.setFormatter (log.Formatter ("%(levelname)s : {} : %(asctime)s : %(message)s".format(self.batchName),
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
@@ -141,7 +150,12 @@ class Batch () :
             runlog.info("FITS folder for the batch already exists")
 
     def __init__ (self, batchName, csvName, bands="ri", rad=40) :
-        """Constructor for the batch. Fills galaxy dictionary"""
+        """
+        Constructor for the batch. Does the following -
+            1. Sets up the folders/environment for the batch
+            2. Reads in the .csv file
+            3. Sets the logger for the batch in galaxy.py
+        """
 
         self.batchName = batchName
         self.csvName = csvName
@@ -192,36 +206,38 @@ class Batch () :
         runlog.info ("Number of galaxies to process - {}".format(len(self.galaxies)))
 
     def __str__ (self) :
-        """Batch object to string"""
+        """ Batch object to string """
         return self.csvPath
 
     def __len__ (self) :
-        """Length of the batch"""
+        """ Length of the batch """
         return len(self.galaxies)
 
     @property
     def csvPath (self) :
-        """Property attribute - Plain name of the csv File"""
+        """ Property attribute - Plain name of the csv File """
         return os.path.join(os.getcwd(), self.batchFold, self.csvName)
 
     @property
     def batchFold (self) :
-        """Property attribute - Path of the batch folder"""
+        """ Property attribute - Path of the batch folder """
         return os.path.join (os.getcwd(), "Data/", self.batchName)
 
     @property
     def fitsFold (self) :
-        """Property attribute - Path of the FITS folder for the batch"""
+        """ Property attribute - Path of the FITS folder for the batch """
         return os.path.join (os.getcwd(), "Data/", self.batchName, "FITS")
 
     @property
     def logPath (self) :
-        """Property attribute - Path of the log file for the batch"""
+        """ Property attribute - Path of the log file for the batch """
         return os.path.join(os.getcwd(), self.batchFold, "{}.log".format(self.batchName))
 
     def downloadBatch (self) :
-        """For each galaxy in the batch's list, downloads it
-        to the FITS folder of the batch"""
+        """
+        For each galaxy in the batch's list, downloads it
+        to the /FITS folder in the batch-folder
+        """
 
         runlog.info("Downloading currently monitoring batch")
         for i, g in enumerate(self.galaxies) :
@@ -235,7 +251,7 @@ class Batch () :
         runlog.info("Downloaded currently monitoring batch")
 
     def loadBatch (self) :
-        """Loads all the FITS files of the batch into memory"""
+        """ Loads all the FITS files of the batch into memory """
 
         runlog.info ("Loading currently monitoring batch")
         for g in self.galaxies :
@@ -249,12 +265,20 @@ class Batch () :
         runlog.info("Loaded currently monitoring batch")
 
     def processBatch (self) :
-        """For each galaxy in the batch's list, processes it
+        """
+        For each galaxy in the batch's list, processes it
         to the pre-classification stage. Performs the following -
             1. Cutout from the FITS file
             2. Smoothen raw cutout data
             3. Find the hull region where peak searching is done
-            4. Perform peak searching """
+            4. Computes the intensity distribution in the hull region
+            5. Filters which galaxies are worth classifying or not based on
+            the above data. The steps below are only applied to objects that pass
+            through this filtration
+            6. Fits a gaussian to the intensity distribution
+            7. Computes the noise/signal cutoff
+            8. Performs stochastic gradient ascent to find a set of raw peaks
+        """
 
         runlog.info ("Processing currently monitoring batch")
         for g in self.galaxies :
@@ -270,12 +294,15 @@ class Batch () :
         runlog.info ("Processed currently monitoring batch")
 
     def classifyBatch (self) :
-        """ For each galaxy in the batch, classifies it only if the
-        filtration dict allows it to
-        1. Identifies the noise/signal cutoff by fitting a gaussian to
-        the inverse intensity histogram
-        2. Performs stochastic gradient ascent  !!! TO-DO
-        3. Applies conditions of connected regions to classify the peaks !!! TO-DO"""
+        """
+        Performs DFS, finds patches of signals that are connected to each other
+        (from the connected components returned by DFS) and classifies based on
+        the following metrics (in order of priority) -
+            1. Distance of the component from the centre of the image
+                -> This is important because SDSS catalogs objects by centering
+                them in frame
+            2. Size of the component (Double Galaxies tend to be large)
+        """
 
         runlog.info ("Classifying currently monitoring batch")
         for g in self.galaxies :
@@ -283,9 +310,6 @@ class Batch () :
             runlog.info("{} --> Classified : {}".format(g.objid, g.gtype))
 
         runlog.info ("Classified currently monitoring batch")
-
-    #############################################################################################################
-    #############################################################################################################
 
     def genResults (self) :
         """
@@ -314,12 +338,14 @@ class Batch () :
 
         runlog.info ("Generated results for currently monitoring batch")
 
+    #############################################################################################################
+    #############################################################################################################
+
     def procDiagnose (self, constrictHist=False, invHist=False) :
         """
         Generates the following for filtered galaxies only -
-            1. Hull boundary
-            2. Hull with signal
-            3. Scatter plot of intensity distribution and gaussian fit
+            1. Hull with signal
+            2. Scatter plot of intensity distribution and gaussian fit
         """
 
         diagPath = os.path.join(self.batchFold, "Proc-Diag")
@@ -331,11 +357,6 @@ class Batch () :
             for b, filt in g.filtrate.items() :
                 if filt :
                     continue
-
-                # Hull only
-                img = g.getHullMarked(b)
-                svimg = Image.fromarray(img.astype(np.uint8))
-                svimg.save(os.path.join(diagPath, "{}-{}_hull.png".format(g.objid, b)))
 
                 # Hull with signal
                 img = g.getHullMarked(b, True)

@@ -315,6 +315,7 @@ class Batch () :
             9. Performs the final classification based on connected components
         """
 
+        print ("Classifying the batch of {} galaxies".format(len(self.galaxies)))
         with conf.ThreadPoolExecutor() as exec :
             verds = [exec.submit(self.classifyGal, g) for g in self.galaxies]
 
@@ -322,6 +323,8 @@ class Batch () :
                 verdline, csvline = f.result()
                 self.reslog.info(csvline)
                 print("{}. {}".format(i, verdline))
+
+        print ("Classification done!".format(len(self.galaxies)))
 
     def genResults (self) :
         """

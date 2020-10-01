@@ -318,10 +318,10 @@ class Batch () :
         with conf.ThreadPoolExecutor() as exec :
             verds = [exec.submit(self.classifyGal, g) for g in self.galaxies]
 
-            for f in conf.as_completed(verds) :
+            for i, f in enumerate(conf.as_completed(verds)) :
                 verdline, csvline = f.result()
                 self.reslog.info(csvline)
-                print(verdline)
+                print("{}. {}".format(i, verdline))
 
     def genResults (self) :
         """

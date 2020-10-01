@@ -48,6 +48,8 @@ class Batch () :
     and performs DAGN classification on them
     """
 
+    batchRoot = "Batches"
+
     def getBatch (batchName, bands="ri", rad=40, csv=None) :
         """ Class method to get a batch """
 
@@ -82,15 +84,15 @@ class Batch () :
         fileHandler.setFormatter(log.Formatter("%(levelname)s : RUN_INIT : %(asctime)s : %(message)s",
                              datefmt='%m/%d/%Y %I:%M:%S %p'))
 
-        # Checks if the /Data directory has been created at the root directory
+        # Checks if the batchRoot directory has been created at the root directory
         runlog.debug("Checking environment for the new batch.")
-        if not os.path.isdir("Data") :
+        if not os.path.isdir(Batch.batchRoot) :
             runlog.critical("Data folder not found!\n\n{}".format(Batch.logFixFmt(
                 "Please create a folder named 'Data' in the notebook directory and rerun!"
             )))
             raise FileNotFoundError
 
-        # Checks if batchName folder exists in /Data
+        # Checks if batchName folder exists in batchRoot
         if not os.path.isdir(self.batchFold) :
             runlog.critical("Batch folder not found\n\n{}".format(Batch.logFixFmt(
                 "Please create a folder for the batch at '{}' and rerun!".format(self.batchFold)
@@ -242,7 +244,7 @@ class Batch () :
     @property
     def batchFold (self) :
         """ Property attribute - Path of the batch folder """
-        return os.path.join (os.getcwd(), "Data/", self.batchName)
+        return os.path.join (os.getcwd(), Batch.batchRoot, self.batchName)
 
     @property
     def fitsFold (self) :

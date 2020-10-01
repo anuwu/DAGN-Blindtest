@@ -5,6 +5,7 @@ import pandas as pd
 import logging as log
 import datetime as dt
 import matplotlib.pyplot as plt
+import concurrent.futures as conf
 from importlib import reload
 from textwrap import TextWrapper as txwr
 from PIL import Image
@@ -31,14 +32,13 @@ runLogPath = "Logs/run_{}.log".format(dateFmt())
 fileHandler = log.FileHandler(runLogPath)
 fileHandler.setFormatter(log.Formatter("%(levelname)s : RUN_INIT : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
-streamHandler = log.StreamHandler()
 
 # Ensures that there is only one fileHandler for the current logger
 for h in runlog.handlers :
     runlog.removeHandler(h)
 
 runlog.addHandler(fileHandler)
-runlog.debug("Batch runner started!")
+runlog.info("Batch runner started!")
 
 sys.setrecursionlimit(10**6)
 
@@ -85,7 +85,7 @@ class Batch () :
                              datefmt='%m/%d/%Y %I:%M:%S %p'))
 
         # Checks if the batchRoot directory has been created at the root directory
-        runlog.debug("Checking environment for the new batch.")
+        runlog.info("Checking environment for the new batch.")
         if not os.path.isdir(Batch.batchRoot) :
             runlog.critical("Data folder not found!\n\n{}".format(Batch.logFixFmt(
                 "Please create a folder named 'Data' in the notebook directory and rerun!"
@@ -104,7 +104,6 @@ class Batch () :
         # name of the .csv file is taken to be the same name as its containing
         # folder
         ######################################################################
-        runlog.debug("{} and {}".format(self.csvName, self.csvPath))
         if not os.path.exists(self.csvPath) :
             runlog.critical("Batch .csv file at path '{}' not found\n\n{}".format(self.batchFold, Batch.logFixFmt(
                 "Please supply the name of the appropriate .csv file and rerun!"
@@ -115,7 +114,7 @@ class Batch () :
         # Changing name of the run log fileHandler to reflect the batch it is
         # presently handling
         ######################################################################
-        runlog.debug("Valid environment! Changing log format to handle batch '{}'".format(self.batchName))
+        runlog.info("Valid environment! Changing log format to handle batch '{}'".format(self.batchName))
         fileHandler.setFormatter(log.Formatter("%(levelname)s : {} : %(asctime)s : %(message)s".format(self.batchName),
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
 
@@ -123,7 +122,6 @@ class Batch () :
         for h in runlog.handlers :
             runlog.removeHandler(h)
         runlog.addHandler(fileHandler)
-        runlog.addHandler(streamHandler)
 
         ######################################################################
         # Creates a /FITS folder in the batch folder where all the FITS files will
@@ -131,28 +129,35 @@ class Batch () :
         ######################################################################
         if not os.path.exists(self.fitsFold) :
             os.mkdir(self.fitsFold)
-            runlog.debug("Created FITS folder for batch")
+            runlog.info("Created FITS folder for batch")
         else :
-            runlog.debug("FITS folder for the batch already exists")
+            runlog.info("FITS folder for the batch already exists")
 
     def __setBatchLogger__ (self) :
         """
-        Sets the correct fileHandler location in the galaxy.py logger
-        for the batch of galaxies that will be processsed. Also deletes the
-        default logger in it if it exists
+        Sets a logger to record the results as a .csv file
+        Can do because logging module of Python is thread-safe
         """
 
-        fh = log.FileHandler(self.logPath)
-        fh.setFormatter(log.Formatter("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
-                                 datefmt='%m/%d/%Y %I:%M:%S %p'))
+        # Creating the .csv file for results
+        writeHeader = False if os.path.exists(self.resPath) else True
+        reslog = log.getLogger(self.batchName + "_result")
+        reslog.setLevel(log.INFO)
+        resFH = log.FileHandler(self.resPath)
+        resFH.setFormatter(log.Formatter("%(message)s"))
 
-        # Ensuring only one fileHandler is associated with the batch logger
-        for h in galaxy.batchlog.handlers :
-            galaxy.batchlog.removeHandler(h)
+        # Ensuring only one file handler exists
+        for h in reslog.handlers :
+            reslog.removeHandler(h)
+        reslog.addHandler(resFH)
 
-        galaxy.batchlog.addHandler(fh)
+        if writeHeader :
+            reslog.info("objID,r-peaks,i-peaks,verdict")
+            runlog.info("Created result csv")
+        else :
+            runlog.info("Result csv already exists")
 
-        galaxy.batchlog.info("Logger (re)set!")
+        self.reslog = reslog
 
     def __setClassList__ (self) :
         """ Sets the list of galaxies to classify -
@@ -192,14 +197,15 @@ class Batch () :
         """
         Constructor for the batch. Does the following -
             1. Sets up the folders/environment for the batch
-            2. Reads in the .csv file
-            3. Sets the logger for the batch in galaxy.py
+            2. Sets the result logger for the batch in the batch folder
+            3. Reads in the batch .csv and the result .csv file and decides
+            which objects remain to be classified
         """
 
         self.batchName = batchName
         self.csvName = csvName
         self.__prelude__()
-        runlog.debug("Successfully created environment for batch")
+        runlog.info("Successfully created environment for batch")
 
         # Function to check if the band(s) supplied by the user is valid
         areBandsValid = lambda bs : len([b for b in bs if b in "ugriz"]) == len(bs) != 0
@@ -217,21 +223,17 @@ class Batch () :
 
         self.bands = bands
 
-        ######################################################################
-        # Sets the logger for the batch. This log file exists in the
-        # batch Folder
-        ######################################################################
+        # Sets the result logger for the batch
         self.__setBatchLogger__()
-        runlog.debug("Set the batch logger")
 
+        # Initialises the galaxy objects that are yet to be classified in this batch
         self.__setClassList__()
 
-        runlog.info("Batch successfully initialised. \
-        \n\nThe classifications will be available at {} \
-        \n\nIn the event of any program crash/error, please check the log file at {} for details"\
+        print("Batch successfully initialised. \
+        \nThe classifications will be available at {} \
+        \nIn the event of any program crash/error, please check the log file at {} for details"\
         .format(self.resPath, os.path.join(os.getcwd(), runLogPath)))
-
-        runlog.info ("Number of galaxies to classify - {}".format(len(self.galaxies)))
+        print("Number of galaxies to classify - {}".format(len(self.galaxies)))
 
     def __str__ (self) :
         """ Batch object to string """
@@ -272,41 +274,35 @@ class Batch () :
         """ Property attribute - Path of the log file for the batch """
         return os.path.join(os.getcwd(), self.batchFold, "{}.log".format(self.batchName))
 
-    def downloadBatch (self) :
-        """
-        For each galaxy in the batch's list, downloads it
-        to the /FITS folder in the batch-folder
-        """
+    def classifyGal (self, gal) :
+        """ Performs the entire pipeline of operations for a single galaxy """
 
-        runlog.info("Downloading currently monitoring batch")
-        for i, g in enumerate(self.galaxies) :
-            try :
-                g.download()
-            except Exception as e :
-                runlog.error("Unknown error while downloading! Please check exception message\n\n{}".format(Batch.logFixFmt(str(e))))
-            else :
-                runlog.info("{}. {} --> Downloaded".format(i+1, g.objid))
+        gal.download()
+        runlog.info("{} --> Downloaded".format(gal.objid))
+        gal.cutout()
+        runlog.info("{} --> Loaded and done cutout".format(gal.objid))
+        gal.smoothen()
+        runlog.info("{} --> Smoothed".format(gal.objid))
+        gal.hullRegion()
+        runlog.info("{} --> Found hull region".format(gal.objid))
+        gal.distInfo()
+        runlog.info("{} --> Comptued intensity distribution".format(gal.objid))
+        gal.filter()
+        runlog.info("{} --> Filtered".format(gal.objid))
+        gal.fitGaussian()
+        runlog.info("{} --> Fit gaussian".format(gal.objid))
+        gal.cutoffNoise()
+        runlog.info("{} --> Computed noise/signal cutoff".format(gal.objid))
+        gal.shc()
+        runlog.info("{} --> Performed stochastic hill climbing".format(gal.objid))
+        gal.verdict()
 
-        runlog.info("Downloaded currently monitoring batch")
-
-    def loadBatch (self) :
-        """ Loads all the FITS files of the batch into memory """
-
-        runlog.info ("Loading currently monitoring batch")
-        for i, g in enumerate(self.galaxies) :
-            try :
-                g.cutout ()
-            except Exception as e :
-                runlog.error("Unknown error in loading FITS! Please check exception message\n\n{}".format(Batch.logFixFmt(str(e))))
-            else :
-                runlog.info("{}. {} --> Loaded".format(i+1, g.objid))
-
-        runlog.info("Loaded currently monitoring batch")
+        return gal.getVerdLine(), gal.getCsvLine()
 
     def classifyBatch (self) :
         """
-        For each galaxy in the batch's list, performs the following -
-            1. Cutout from the FITS file
+        For each galaxy in the batch's list, performs the following (multithreaded) -
+            1. Load the FITS file and do the cutout
             2. Smoothen raw cutout data
             3. Find the hull region where peak searching is done
             4. Computes the intensity distribution in the hull region
@@ -319,40 +315,13 @@ class Batch () :
             9. Performs the final classification based on connected components
         """
 
-        # Creating the .csv file for results
-        writeHeader = False if os.path.exists(self.resPath) else True
-        reslog = log.getLogger(self.batchName + "_result")
-        reslog.setLevel(log.INFO)
-        resFH = log.FileHandler(self.resPath)
-        resFH.setFormatter(log.Formatter("%(message)s"))
+        with conf.ThreadPoolExecutor() as exec :
+            verds = [exec.submit(self.classifyGal, g) for g in self.galaxies]
 
-        # Ensuring only one file handler exists
-        for h in reslog.handlers :
-            reslog.removeHandler(h)
-        reslog.addHandler(resFH)
-
-        if writeHeader :
-            reslog.info("objID,r-peaks,i-peaks,verdict")
-            runlog.debug("Created result csv")
-        else :
-            runlog.debug("Result csv already exists")
-
-        runlog.info("Classifying currently monitoring batch")
-        for i, g in enumerate(self.galaxies) :
-            g.smoothen()
-            g.hullRegion()
-            g.distInfo()
-            g.filter()
-            g.fitGaussian()
-            g.cutoffNoise()
-            g.sga()
-            g.verdict()
-            verd = "{}. {} --> Classified : {}".format(i+1, g.objid, g.gtype)
-            runlog.info(verd)
-            reslog.info(g.getResLine())
-
-        runlog.info("Classified currently monitoring batch")
-        runlog.info("Please check {} for detailed classification info".format(self.resPath))
+            for f in conf.as_completed(verds) :
+                verdline, csvline = f.result()
+                self.reslog.info(csvline)
+                print(verdline)
 
     def genResults (self) :
         """
@@ -381,7 +350,7 @@ class Batch () :
             runlog.info("{}. {} --> Generated plot".format(i+1, g.objid))
 
         runlog.info("Generated results for currently monitoring batch")
-        runlog.info("Results generated for the batch. Please check the contents of {}".format(self.resFold))
+        print("Results generated for the batch. Please check the contents of {}".format(self.resFold))
 
     #############################################################################################################
     #############################################################################################################

@@ -50,7 +50,7 @@ class GalType (Enum) :
         INVALID_OBJID       - Self explanatory
         FAIL_DLINK          - Scraping download links for FITS files failed
         FILTERED            - Filtered by the filtration condition
-        NO_PEAK             - SGA did not return any peaks
+        NO_PEAK             - shc did not return any peaks
         SINGLE              - Single nuclei galaxy
         DOUBLE              - Double nuclei galaxy
     """
@@ -74,7 +74,7 @@ class Galaxy () :
 
     # Color for marking the hull
     hullMarker = (0, 0, 255)
-    # Color for marking the peaks found by SGA
+    # Color for marking the peaks found by shc
     peakMarker = (255, 0, 0)
     # Color for marking signal region in hull
     signalMarker = (64, 224, 208)
@@ -216,8 +216,8 @@ class Galaxy () :
 
         self.gaussParams,       # (mean, sigma, noise, half-width half-max)     --> Empty () on filtration, or fitting failure
         self.searchRegs,        # Region in hull above noise                    --> Empty (0, 2) numpy array on fitting failure
-        self.noiseAvgs,            # Noise value for SNR calculation               --> If None, don't use SNR filtration in SGA
-        self.gradPeaks,         # Peaks found in SGA                            --> Empty OrderedDict for no peaks
+        self.noiseAvgs,         # Noise value for SNR calculation               --> If None, don't use SNR filtration in shc
+        self.gradPeaks,         # Peaks found in shc                            --> Empty OrderedDict for no peaks
         self.finPeaks           # Reduced peak list after dfs                   --> Empty [] for no peaks
         ) = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
 
@@ -328,7 +328,6 @@ class Galaxy () :
 
         # Bands that remain to be downloaded. Ignores invalid bands in 'band' attribute
         toDown = [b for b in self.bands if b in "ugriz" and not os.path.exists(self.getFitsPath(b))]
-        batchlog.debug("toDown = {}".format(toDown))
         if not toDown :
             batchlog.info("{} --> FITS files of all bands already downloaded".format(self.objid))
             return
@@ -451,12 +450,12 @@ class Galaxy () :
                     ))(imgNorm.data)
 
         for b, cut in self.cutouts.items() :
-            self.imgs[b] = smoothen_b(cut)
+            self.imgs[b] = Galaxy.emptyImage() if cut is None else smoothen_b(cut)
             batchlog.info("{} --> Smoothened {}-band".format(self.objid, b))
 
     def hullRegion (self) :
         """
-        Finds the region where SGA has to be performed for each band
+        Finds the region where shc has to be performed for each band
         Works as follows -
             1. Uses canny with parameters (defined as Class variables)
             to find edges
@@ -549,7 +548,7 @@ class Galaxy () :
             1. Cutout is None                                       --> FITS failure
             2. Smoothed image is empty                              --> No appreciable signal that can be processed well by LogNorm
             3. Hull boundary is empty                               --> No sharp object in the image, mostly dark
-            4. Hull region is empty                                 --> Object too small to conduct SGA
+            4. Hull region is empty                                 --> Object too small to conduct shc
             5. Centre is not in hull region                         --> Hull encloses an object with a different SDSS objID
         If true, do not classify. Finding an object/signal is highly improbable
         """
@@ -602,7 +601,7 @@ class Galaxy () :
     def cutoffNoise (self) :
         """
         For each band, finds the region within the hull that is above the noise
-        level determined by gaussian fitting. This is where SGA
+        level determined by gaussian fitting. This is where shc
         will be performed
         """
 
@@ -643,9 +642,9 @@ class Galaxy () :
                                                                 self.gaussParams[b][2]))
             batchlog.info("{} --> Cut-off noise and signal for {}-band".format(self.objid, b))
 
-    def sga (self, highPeak=False, boundPeak=True, reduc=100, tol=3) :
+    def shc (self, highPeak=False, boundPeak=True, reduc=100, tol=3) :
         """
-        Performs Stochastic Gradient Ascent (SGA) in the region indicated by attribute 'hullReg'
+        Performs stochastic hill climbing (SHC) in the region indicated by attribute 'hullReg'
         for each band. It works as follows -
             1. Initialises a point randomly in the region
             2. In a 7x7 region, finds the pixel which has the
@@ -653,31 +652,30 @@ class Galaxy () :
                 -> Note that 7x7 is to be interpreted as (2*tol + 1) x (2*tol + 1)
                 at every piece of documentation in this method
                 -> 'tol' defines the no. of neighbors to be considered during
-                SGA
+                shc
             3. Sets the current pixel to this max pixel
             4. Repeat the above steps until no greater pixel can be found in the
             7x7 region
 
         The above routine is performed 'iter' times (defined in internal function
-        gradAsc_b). The final peak (pixel coordinate) of each run of SGA
+        gradAsc_b). The final peak (pixel coordinate) of each run of shc
         is compared with a running list of peaks and a filtration condition is applied
         to include it or not. This condition is described in detail in the comments
 
         'reduc' is a proportionality factor to decide the number of runs of
-        SGA to perform
+        shc to perform
         """
 
-        def sga_b (searchReg, gradKey, hwhm, avgNoise) :
-            """ Performs SGA on a region for a particular band
+        def shc_b (searchReg, gradKey, hwhm, avgNoise) :
+            """ Performs shc on a region for a particular band
             Argument 'gradKey' is a lambda function for the underlying pixel
             values for the band image """
 
-            batchlog.debug("Size of region = {}".format(len(searchReg)))
             if not searchReg.size :
                 return Galaxy.emptyPeaks()
 
             ######################################################################
-            # The runs of SGA is taken to be proportional to the
+            # The runs of shc is taken to be proportional to the
             # length of the region
             ######################################################################
             iters = max(len(searchReg)//reduc, 100)
@@ -743,17 +741,17 @@ class Galaxy () :
 
         for b, filt in self.filtrate.items() :
             self.gradPeaks[b] = Galaxy.emptyPeaks() if filt or not self.searchRegs[b].size\
-                            else sga_b(self.searchRegs[b],
+                            else shc_b(self.searchRegs[b],
                                         lambda x:self.imgs[b][x],
                                         self.gaussParams[b][3],
                                         self.noiseAvgs[b])
 
-            batchlog.info("{} --> Performed stochastic gradient ascent {}-band".format(self.objid, b))
+            batchlog.info("{} --> Performed stochastic hill climbing {}-band".format(self.objid, b))
 
     def verdict (self) :
         """
         Final classification of the image. Works as follows
-        1. If filtered or gtype is already set, do not perform SGA
+        1. If filtered or gtype is already set, do not perform shc
             -> INVALID_OBJID or FAIL_DLINK
         2. If the no. of peaks returned by gradient descent is 0 or 1,
         then return it simply
@@ -890,14 +888,24 @@ class Galaxy () :
     #############################################################################################################
     #############################################################################################################
 
-    def getResLine (self) :
-        """ Returns a string which is formatted in the same way
-        as one line of the result .csv file of the owning batch """
+    def getCsvLine (self) :
+        """
+        Returns a string which is formatted in the same way
+        as one line of the result .csv file of the owning batch
+        """
 
         return "{},\"{}\",\"{}\",{}".format(self.objid,
                                         self.finPeaks['r'],
                                         self.finPeaks['i'],
                                         self.gtype)
+
+    def getVerdLine (self) :
+        """
+        Returns the line that will be printed to the user
+        for the classification result
+        """
+
+        return "{} --> {}".format(self.objid, self.gtype)
 
     def getFitsPath (self, b) :
         """
@@ -992,7 +1000,7 @@ class Galaxy () :
     def getGradPeaksMarked (self, bands="", hull=False, asDict=False) :
         """
         Returns a copy of the smoothed image of the specified band(s)
-        with raw peaks from SGA, marked.
+        with raw peaks from shc, marked.
         Additionally, if hull is set, then the hull is marked as well
         """
 
@@ -1044,7 +1052,6 @@ class Galaxy () :
             by matplotlib for plotting pixel intensity scatter and gaussian fit """
 
             x, y = info
-            batchlog.debug ("{}".format(x))
             l = 1 if not np.min(x) else 0
             x, y = x[l:], y[l:]
 

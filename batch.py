@@ -152,7 +152,7 @@ class Batch () :
         reslog.addHandler(resFH)
 
         if writeHeader :
-            reslog.info("objID,r-peaks,i-peaks,verdict")
+            reslog.info("objID,u-peaks,g-peaks,r-peaks,i-peaks,z-peaks,verdict")
             runlog.info("Created result csv")
         else :
             runlog.info("Result csv already exists")

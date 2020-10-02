@@ -11,17 +11,21 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import logging as log
 
+from collections import OrderedDict
+from enum import Enum
+
 from astropy.io import fits
 from astropy.nddata import Cutout2D
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord, Angle
 from astropy import units as u
 from astropy.utils.exceptions import AstropyWarning
-from collections import OrderedDict
+
 from scipy.optimize import curve_fit
 from scipy.optimize.minpack import OptimizeWarning
+from scipy.integrate import cumtrapz as cint
 import scipy.special as sc
-from enum import Enum
+
 
 # Ignores covariance warning from scipy
 warnings.simplefilter('ignore', category=OptimizeWarning)
@@ -44,26 +48,174 @@ for h in batchlog.handlers :
 batchlog.addHandler(fileHandler)
 batchlog.info("Welcome!")
 
+class DistFit () :
+    """
+    Stores a grayscale pixel distribution and contains methods to infer
+    the noise/signal level from it depending on a particular fitting curve
+        1. Parameters of the fit
+        2. Noise level
+        3. Signal level
+    """
+
+    def __seriesToDist__ (self, series) :
+        """ Computes the distribution from the flattened data """
+
+        uq = np.unique(series, return_counts=True)
+
+        ######################################################################
+        # grays - Contains the grayscale values in the image
+        # counts - Number of pixels with a particular grayscale value
+        ######################################################################
+        grays, counts = tuple(np.split(np.array([
+                                    [i, uq[1][np.argwhere(uq[0]==i).flatten()][0]]
+                                    for i in range(0,256)
+                                    if np.argwhere(uq[0]==i).flatten().size > 0
+                                    ]), 2, axis=1))
+
+        ming = 1 if not np.min(grays) else 0
+        self.grays, self.counts = grays[ming:].flatten(), counts[ming:].flatten()
+
+    def __init__ (self, series) :
+        """
+        Constructor for the distribution object - Takes in the hull region
+        pixel values (grayscale only) in flattened format
+        """
+
+        # Finds pixel distribution from flattened data
+        self.__seriesToDist__(series)
+        self.initParams = []                                # Initial parameters to seed the fitting function
+        self.params = ()                                    # Parameters of the fit, specific to fitting curve
+        self.cov = None                                     # Covariance of the fit
+        self.noise = None                                   # Noise level derived from the fit
+        self.signal = None                                  # Signal level derived from the fit
+        self.curveToFit = None                              # Curve to fit, takes as specific input point and parameters as input
+        self.fitCurve = None                                # Uni-dimensional function after fitting is done
+        self.noiseSNR = None
+
+    def fit (self) :
+        """ Procedure for fitting data to distribution """
+        self.params, self.cov = curve_fit(self.curveToFit, self.counts, self.grays, p0=self.initParams)
+
+    def inferLevels (self) :
+        """
+        Infer noise and signal level based on parameters
+        particular to a distribution
+        """
+        pass
+
+    def snrNoise (self, cutout, smooth, iters=100) :
+        """
+        From the cutout image and smoothed image, computes the noise intensity
+        that will be used in SNR calculations for peak reporting
+        """
+
+        # If there is no pixel below noise level, then don't calculate it
+        noiseCoods = np.argwhere(smooth < self.noise)
+        if not noiseCoods.size :
+            return
+
+        noiseTot = 0
+        for _ in range(0, iters) :
+            pt = tuple(noiseCoods[np.random.choice(range(0, len(noiseCoods)))])
+            noiseTot += np.mean([
+                cutout[p] for p in
+                ([pt] + Galaxy.neighsInReg(pt, noiseCoods, 1))
+            ])
+
+        self.noiseSNR = noiseTot/iters
+
+
+class Gaussian (DistFit) :
+    """ Data, fitting curve and parameters for a gaussian intensity profile """
+
+    def __init__ (self, series) :
+        """ Constructor for the gaussian profile object """
+        DistFit.__init__(self, series)
+        self.curveToFit = lambda z, gp, sg : gp*np.exp(-np.square(z/(4*sg)))
+        self.initParams = [np.max(self.grays), np.max(self.counts)/20]
+
+        # Fitting with the given data
+        self.fit()
+
+    def setFitCurve (self) :
+        """ Sets the distribution wrt grayscale count """
+
+        mean, sigma = self.params
+        self.fitCurve = lambda z : mean*np.exp(-np.square(z/(4*sigma)))
+
+    def inferLevels (self, noiseSig, hwhmSig) :
+        """
+        Infers the noise and signal from the noise significance value
+        and the half-width-half-maximum significance value
+        """
+
+        self.noise = np.floor(self.params[0]/noiseSig)
+        self.signal = np.floor(self.params[0]/hwhmSig)
+
+
+class Sersic (DistFit) :
+    """ Data, fitting curve and parameters for a Sersic intensity profile """
+
+    def __init__ (self, series) :
+        """ Constructor for the sersic profile object """
+        DistFit.__init__(self, series)
+        self.curveToFit = lambda z, k, n : np.max(self.grays) - k*np.power(z/4, 1/n)
+        self.initParams = [np.max(self.grays)*np.power(4/np.max(self.counts), 1/4), 1/4]
+
+        # Fitting with the given data
+        self.fit()
+
+    def setFitCurve (self) :
+        """ Sets the distribution wrt grayscale count """
+
+        k, n = self.params
+        self.fitCurve = lambda z : np.max(self.grays) - k*np.power(z/4, 1/n)
+
+    def inferLevels (self, noisePer=0.95, sigPer=0.5, divs=10000) :
+        """
+        Infers the noise and signal levels from the integrated
+        light of the fit sersic profile
+        """
+
+        k, n = self.params
+        fmax = 4*np.power(np.max(self.grays)/k, n)
+
+        xs = np.linspace(0, fmax, 10000)
+        integrand = self.fitCurve(xs)
+        intProf = cint(integrand, xs, initial=0)
+
+        def perInd (per) :
+            """ Helper function that computes the grayscale level at a given
+            integrated light percentage """
+            l = len(intProf)
+            level = per*intProf[-1]
+            ind = np.argmax(np.where(intProf - level < 0,
+                                    range(0, l),
+                                    -1))
+            return integrand[ind]
+
+        self.noise, self.signal = perInd(noisePer), perInd(sigPer)
+
+
 class GalType (Enum) :
     """
     Enum for the final verdict of a galaxy
         INVALID_OBJID       - Self explanatory
         FAIL_DLINK          - Scraping download links for FITS files failed
-        FILTERED            - Filtered by the filtration condition
         NO_PEAK             - shc did not return any peaks
         SINGLE              - Single nuclei galaxy
         DOUBLE              - Double nuclei galaxy
     """
     (INVALID_OBJID,
     FAIL_DLINK,
-    FILTERED,
     NO_PEAK,
     SINGLE,
-    DOUBLE) = tuple(range(6))
+    DOUBLE) = tuple(range(5))
 
     def __str__(self) :
         """ Enum as string """
         return self.name
+
 
 class Galaxy () :
     """Contains all of the galaxies info"""
@@ -86,7 +238,7 @@ class Galaxy () :
     # Empty 2-D image
     emptyImage = lambda : Galaxy.emptyArray2D()
     # Empty list of indices
-    emptyInds = lambda : Galaxy.emptyArray2D()
+    emptyCoods = lambda : Galaxy.emptyArray2D()
     # Empty list of peaks
     emptyPeaks = lambda : OrderedDict({})
 
@@ -185,7 +337,7 @@ class Galaxy () :
         self.cood,                      # Celestial coordinates of the object
         self.fitsFold,                  # Folder where the FITS image of the object should be downloaded
         self.repoLink,                  # Repository link of the FITS file
-        self.gtype                      # Final classification result (Held as an enum --> Check 'Class GalType')
+        self.verd,
         ) = objid, bands, cood, fitsFold, None, None
 
         ######################################################################
@@ -198,27 +350,27 @@ class Galaxy () :
         # only for bands in which there's a reasonable guarantee of finding
         # a single/double galaxy
         ######################################################################
-        (self.downLinks,        # FITS download links in all bands              --> Empty Dict or Full
-        self.cutouts,           # Raw cutout data                               --> None signifies FITS Failure
-        self.imgs,              # Smoothened cutout image                       --> Empty (0, 2) numpy array signifies no appreciable signal in image / FITS failure
+        (self.downLinks,        # 1. FITS download links in all bands           --> Empty Dict or Full
+        self.cutouts,           # 2. Raw cutout data                            --> None signifies FITS Failure
+        self.imgs,              # 3. Smoothened cutout image                    --> Empty (0, 2) numpy array signifies no appreciable signal in image / FITS failure
 
         ######################## Failures cascade down #######################
 
-        self.hullInds,          # Convex hull indices                           --> Empty (0, 2) numpy array signifies no appreciable signal in image
-        self.hullRegs,          # Region enclosed by convex hull                --> Empty (0, 2) numpy array signifies tightly enclosed hull
-        self.regInfo,           # Pixel intensity count of hull region          --> Same as above, but the hull is all dark
+        self.hullCoods,         # 4. Convex hull indices                        --> Empty (0, 2) numpy array signifies no appreciable signal in image
+        self.hullRegs,          # 5. Region enclosed by convex hull             --> Empty (0, 2) numpy array signifies tightly enclosed hull
+        self.regInfo,           # 6. Pixel intensity count of hull region       --> Same as above, but the hull is all dark
 
         ########################### Failure WALL ############################
 
-        self.filtrate,          # Condition not to process any further          --> Finding an object/signal is highly improbable
+        self.filtrate,          # 7. Condition not to process any further       --> Finding an object/signal is highly improbable
 
         ######################## Failures cascade down #######################
 
-        self.gaussParams,       # (mean, sigma, noise, half-width half-max)     --> Empty () on filtration, or fitting failure
-        self.searchRegs,        # Region in hull above noise                    --> Empty (0, 2) numpy array on fitting failure
-        self.noiseAvgs,         # Noise value for SNR calculation               --> If None, don't use SNR filtration in shc
-        self.gradPeaks,         # Peaks found in shc                            --> Empty OrderedDict for no peaks
-        self.finPeaks           # Reduced peak list after dfs                   --> Empty [] for no peaks
+        self.gaussParams,       # 8. (mean, sigma, noise, half-width half-max)  --> Empty () on filtration, or fitting failure
+        self.searchRegs,        # 9. Region in hull above noise                 --> Empty (0, 2) numpy array on fitting failure
+        self.noiseAvgs,         # 10. Noise value for SNR calculation           --> If None, don't use SNR filtration in shc
+        self.gradPeaks,         # 11. Peaks found in shc                        --> Empty OrderedDict for no peaks
+        self.finPeaks          # 12. Reduced peak list after dfs               --> Empty [] for no peaks
         ) = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
 
         ######################################################################
@@ -337,8 +489,8 @@ class Galaxy () :
         if self.repoLink is None :
             self.scrapeRepoLink()
             if self.repoLink is None :
-                self.gtype = GalType(GalType.INVALID_OBJID)
-                batchlog.warning("{} --> Set gtype to INVALID_OBJID".format(self.objid))
+                self.verd = GalType(GalType.INVALID_OBJID)
+                batchlog.warning("{} --> Set verd to INVALID_OBJID".format(self.objid))
                 return
 
         batchlog.info("{} --> FITS repository link successfully retrieved".format(self.objid))
@@ -347,8 +499,8 @@ class Galaxy () :
         if not self.downLinks :
             self.scrapeBandLinks()
             if not self.downLinks :
-                self.gtype = GalType(GalType.FAIL_DLINK)
-                batchlog.warning("{} --> Set gtype to FAIL_DLINK".format(self.objid))
+                self.verd = GalType(GalType.FAIL_DLINK)
+                batchlog.warning("{} --> Set verd to FAIL_DLINK".format(self.objid))
                 return
 
         batchlog.info("{} --> FITS bands download links retrieved".format(self.objid))
@@ -487,7 +639,7 @@ class Galaxy () :
 
             # There are no well defined edges if 'cannyEdges' is empty
             if not cannyEdges.size :
-                return Galaxy.emptyInds(), Galaxy.emptyInds()
+                return Galaxy.emptyCoods(), Galaxy.emptyCoods()
 
             # Step 2a
             cannyHull = [cv2.convexHull(np.flip(cannyEdges, axis=1))]
@@ -495,7 +647,7 @@ class Galaxy () :
             fullImg = cv2.drawContours(Galaxy.toThreeChannel(img), cannyHull, 0,
                                     Galaxy.hullMarker, 1, 8)
             # Step 2c
-            hullInds = np.argwhere((fullImg == np.array(Galaxy.hullMarker)).all(axis=2))
+            hullCoods = np.argwhere((fullImg == np.array(Galaxy.hullMarker)).all(axis=2))
 
             # Step 3
             hullRegs = (lambda f, uq : np.array([
@@ -507,14 +659,34 @@ class Galaxy () :
                             else f[uq[i]:uq[i+1],1])
                                         ])
             )(*(lambda f : (f, np.unique(f[:,0], True)[1]))\
-                (hullInds))
+                (hullCoods))
 
-            return hullInds, Galaxy.emptyInds() if not hullRegs.size else hullRegs
+            return hullCoods, Galaxy.emptyCoods() if not hullRegs.size else hullRegs
 
         for b, img in self.imgs.items() :
-            self.hullInds[b], self.hullRegs[b] = (Galaxy.emptyInds(), Galaxy.emptyInds()) if not img.size \
+            self.hullCoods[b], self.hullRegs[b] = (Galaxy.emptyCoods(), Galaxy.emptyCoods()) if not img.size \
                                                 else hullRegion_b(img)
             batchlog.info("{} --> Obtained hull boundary and region for {}-band".format(self.objid, b))
+
+    def filter (self, per=10) :
+        """
+        Filtration condition before classification -
+            1. Cutout is None                                       --> FITS failure
+            2. Smoothed image is empty                              --> No appreciable signal that can be processed well by LogNorm
+            3. Hull boundary is empty                               --> No sharp object in the image, mostly dark
+            4. Hull region is empty                                 --> Object too small to conduct shc
+            5. Centre is not in hull region                         --> Hull encloses an object with a different SDSS objID
+        If true, do not classify. Finding an object/signal is highly improbable
+        """
+
+        for b in self.bands :
+            if b in "ugriz" :
+                self.filtrate[b] = self.cutouts[b] is None or\
+                        not self.imgs[b].size or\
+                        not self.hullCoods[b].size or\
+                        not self.hullRegs[b].size or\
+                        not Galaxy.isPointIn((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b])
+                batchlog.info("{} --> Calculated filtrate for {}-band".format(self.objid, b))
 
     def distInfo (self) :
         """
@@ -541,26 +713,6 @@ class Galaxy () :
         for b, series in self.getSmoothRegSeries().items() :
             self.regInfo[b] = (Galaxy.emptyArray(), Galaxy.emptyArray()) if not series.size else calcInfo (series)
             batchlog.info("{} --> Found the hull region pixel distribution for {}-band".format(self.objid, b))
-
-    def filter (self, per=10) :
-        """
-        Filtration condition before classification -
-            1. Cutout is None                                       --> FITS failure
-            2. Smoothed image is empty                              --> No appreciable signal that can be processed well by LogNorm
-            3. Hull boundary is empty                               --> No sharp object in the image, mostly dark
-            4. Hull region is empty                                 --> Object too small to conduct shc
-            5. Centre is not in hull region                         --> Hull encloses an object with a different SDSS objID
-        If true, do not classify. Finding an object/signal is highly improbable
-        """
-
-        for b in self.bands :
-            if b in "ugriz" :
-                self.filtrate[b] = self.cutouts[b] is None or\
-                        not self.imgs[b].size or\
-                        not self.hullInds[b].size or\
-                        not self.hullRegs[b].size or\
-                        not Galaxy.isPointIn((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b])
-                batchlog.info("{} --> Calculated filtrate for {}-band".format(self.objid, b))
 
     def fitGaussian (self, noiseSig=10, hwhmSig=2) :
         """
@@ -618,22 +770,22 @@ class Galaxy () :
                 4. Repeat above steps 100 times and return average noise """
 
             # If there is no pixel below noise level, then don't calculate it
-            noiseInds = np.argwhere(img < gaussNoise)
-            if not noiseInds.size :
+            noiseCoods = np.argwhere(img < gaussNoise)
+            if not noiseCoods.size :
                 return None
 
             noiseTot = 0
             for _ in range(0, iters) :
-                pt = tuple(noiseInds[np.random.choice(range(0, len(noiseInds)))])
+                pt = tuple(noiseCoods[np.random.choice(range(0, len(noiseCoods)))])
                 noiseTot += np.mean([
                     cutout[p] for p in
-                    ([pt] + Galaxy.neighsInReg(pt, noiseInds, 1))
+                    ([pt] + Galaxy.neighsInReg(pt, noiseCoods, 1))
                 ])
 
             return noiseTot/iters
 
         for b,filt in self.filtrate.items() :
-            self.searchRegs[b], self.noiseAvgs[b] = (Galaxy.emptyInds(), None) if filt or not self.gaussParams[b] \
+            self.searchRegs[b], self.noiseAvgs[b] = (Galaxy.emptyCoods(), None) if filt or not self.gaussParams[b] \
                                                     else (searchReg_b(self.hullRegs[b],
                                                                     self.imgs[b],
                                                                     self.gaussParams[b][2]),
@@ -853,7 +1005,7 @@ class Galaxy () :
             return sorted(bestPeaks, key=imKey, reverse=True)[:2]
 
         # gtype could be set to INVALID_OBJID or FAIL_DLINK from the downloading phase
-        if self.gtype is not None :
+        if self.verd is not None :
             self.finPeaks = {b:[] for b in self.bands if b in "ugriz"}
             batchlog.info("{} --> Verdict : {}".format(self.objid, self.gtype))
             return
@@ -870,20 +1022,25 @@ class Galaxy () :
 
         # Mapping filtered peak list in each band to its length
         peakLens = {b:len(fp) for b, fp in self.finPeaks.items()}
-        rLen, iLen = peakLens['r'], peakLens['i']
 
-        ######################################################################
-        # Upon experimentation, r-band seems to be most sensitive, however,
-        # concluding that a galaxy is indeed a double source needs to be supported
-        # by i-band as well in order to minimize the false positive rate
-        # (Detected double but actually single).
-        ######################################################################
-        if rLen == 2 and iLen in [1, 2] :
-            self.gtype = GalType(GalType.DOUBLE)
+        # Simple majority verdict -
+        cntZero, cntOne, cntTwo = 0, 0, 0
+        for _, l in peakLens.items() :
+            if l == 0 :
+                cntZero += 1
+            elif l == 1 :
+                cntOne += 1
+            else :
+                cntTwo += 1
+
+        if cntTwo > 2 :
+            self.verd = GalType(GalType.DOUBLE)
+        elif cntOne > 2 :
+            self.verd = GalType(GalType.SINGLE)
         else :
-            self.gtype = GalType(GalType.SINGLE)
+            self.verd = GalType(GalType.NO_PEAK)
 
-        batchlog.info("{} --> Verdict : {}".format(self.objid, self.gtype))
+        batchlog.info("{} --> Majority verdict : {}".format(self.objid, self.verd))
 
     #############################################################################################################
     #############################################################################################################
@@ -894,10 +1051,13 @@ class Galaxy () :
         as one line of the result .csv file of the owning batch
         """
 
-        return "{},\"{}\",\"{}\",{}".format(self.objid,
-                                        self.finPeaks['r'],
-                                        self.finPeaks['i'],
-                                        self.gtype)
+        return "{},\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",{}".format(self.objid,
+                                                            self.finPeaks['u'],
+                                                            self.finPeaks['g'],
+                                                            self.finPeaks['r'],
+                                                            self.finPeaks['i'],
+                                                            self.finPeaks['z'],
+                                                            self.verd)
 
     def getVerdLine (self) :
         """
@@ -905,7 +1065,7 @@ class Galaxy () :
         for the classification result
         """
 
-        return "{} --> {}".format(self.objid, self.gtype)
+        return "{} --> {}".format(self.objid, self.verd)
 
     def getFitsPath (self, b) :
         """
@@ -982,11 +1142,12 @@ class Galaxy () :
         """ Returns a copy of the smoothed image of the specified band(s) with hull marked"""
 
         hullMarks = self.getSmooth(bands, True, True)
-        for b, hi in Galaxy.stripDict(self.hullInds, bands).items() :
+        for b, hi in Galaxy.stripDict(self.hullCoods, bands).items() :
             img = hullMarks[b]
             img[Galaxy.coodIndexer(hi)] = np.array(Galaxy.hullMarker)
             if sig :
-                img[img[...,0] > self.gaussParams[b][2]] = np.array(Galaxy.signalMarker)
+                noise = 0 if self.filtrate[b] else self.gaussParams[b][2]
+                img[img[...,0] > noise] = np.array(Galaxy.signalMarker)
 
         return Galaxy.copyRet(hullMarks, bands, asDict)
 
@@ -1051,13 +1212,18 @@ class Galaxy () :
             """ Helper function to return (*args, **kwargs), to be directly called
             by matplotlib for plotting pixel intensity scatter and gaussian fit """
 
-            x, y = info
-            l = 1 if not np.min(x) else 0
-            x, y = x[l:], y[l:]
+            if not cutoff :
+                x, y = [], []
+                lin, linGauss = [], []
+                noise = 0
+            else :
+                x, y = info
+                l = 1 if not np.min(x) else 0
+                x, y = x[l:], y[l:]
 
-            gpeak, sigma, noise = cutoff[:-1]
-            lin = np.linspace(np.min(y), np.max(y), divs)
-            linGauss = (lambda z:gpeak*np.exp(-np.square(z/sigma)))(lin)
+                gpeak, sigma, noise = cutoff[:-1]
+                lin = np.linspace(np.min(y), np.max(y), divs)
+                linGauss = (lambda z:gpeak*np.exp(-np.square(z/sigma)))(lin)
 
             return [{"args":(y, x, 'o'), "kwargs":{'markersize':3}},
             {"args":(lin, linGauss, 'r'), "kwargs":{}},
@@ -1065,6 +1231,6 @@ class Galaxy () :
 
         argPacks = {b:getGaussArgPack(self.regInfo[b], self.gaussParams[b])
                     for b, filt
-                    in self.filtrate.items() if not filt}
+                    in self.filtrate.items()}
 
         return Galaxy.copyRet(argPacks, bands, asDict)

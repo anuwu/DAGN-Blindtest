@@ -290,16 +290,16 @@ class Galaxy () :
         """
 
         band_entry = {b:pk.csvColumn() for b, pk in self.peaks.items()}
-        args = tuple([band_entry[b] for b in "ugriz"])
-        return "{},{},{},{},{}".format(*args)
+        args = tuple([str(self)] + [band_entry[b] for b in "ugriz"])
+        return "{},{},{},{},{},{}".format(*args)
 
     def progressLine (self) :
         """ Returns a line to output the batch's progress """
 
-        st = ""
+        st = str(self) + " --> "
         for _, p in self.peaks.items() :
             st += str(p.btype)
-            st += 2*' '
+            st += "  "
 
         return st
 

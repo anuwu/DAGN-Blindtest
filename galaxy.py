@@ -1,11 +1,8 @@
 import os
 import sys
-import bs4
 import warnings
 import numpy as np
 import logging
-
-from importlib import reload
 
 import sdss_scrape as scrap
 import plane_coods as pc

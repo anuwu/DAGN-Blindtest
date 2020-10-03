@@ -6,12 +6,9 @@ import logging as log
 import datetime as dt
 import matplotlib.pyplot as plt
 import concurrent.futures as conf
-from importlib import reload
 from textwrap import TextWrapper as txwr
-from PIL import Image
 
 import galaxy
-galaxy = reload(galaxy)
 Galaxy = galaxy.Galaxy
 
 # Create the /Logs folder for the root directory if it doesn't already exist
@@ -133,6 +130,12 @@ class Batch () :
         else :
             runlog.info("FITS folder for the batch already exists")
 
+        if not os.path.isdir(self.resFold) :
+            os.mkdir(self.resFold)
+            runlog.info("Created results folder for batch")
+        else :
+            runlog.info("Results folder for the batch already exists")
+
     def __setBatchLogger__ (self) :
         """
         Sets a logger to record the results as a .csv file
@@ -140,10 +143,10 @@ class Batch () :
         """
 
         # Creating the .csv file for results
-        writeHeader = False if os.path.exists(self.resPath) else True
+        writeHeader = False if os.path.exists(self.resCsvPath) else True
         reslog = log.getLogger(self.batchName + "_result")
         reslog.setLevel(log.INFO)
-        resFH = log.FileHandler(self.resPath)
+        resFH = log.FileHandler(self.resCsvPath)
         resFH.setFormatter(log.Formatter("%(message)s"))
 
         # Ensuring only one file handler exists
@@ -180,8 +183,8 @@ class Batch () :
 
         # try block to read the result .csv file
         try :
-            resIDs = [] if not os.path.exists(self.resPath) else\
-                    list(pd.read_csv(self.resPath, dtype=object)['objID'])
+            resIDs = [] if not os.path.exists(self.resCsvPath) else\
+                    list(pd.read_csv(self.resCsvPath, dtype=object)['objID'])
         except ValueError as e :
             runlog.critical("Error in loading result csv file\n\n{}".format(Batch.logFixFmt(
                 "Please ensure the first column in 'objID'. If the file is corrupted, delete \
@@ -232,7 +235,7 @@ class Batch () :
         print("Batch successfully initialised. \
         \nThe classifications will be available at {} \
         \nIn the event of any program crash/error, please check the log file at {} for details"\
-        .format(self.resPath, os.path.join(os.getcwd(), runLogPath)))
+        .format(self.resCsvPath, os.path.join(os.getcwd(), runLogPath)))
         print("Number of galaxies to classify - {}".format(len(self.galaxies)))
 
     def __str__ (self) :
@@ -265,7 +268,7 @@ class Batch () :
         return os.path.join(self.batchFold, self.csvName)
 
     @property
-    def resPath (self) :
+    def resCsvPath (self) :
         """ Property attribute - Path of the result .csv file """
         return os.path.join(self.batchFold, self.csvName[:-4] + "_result.csv")
 
@@ -295,6 +298,16 @@ class Batch () :
         g.setPeaks()
         runlog.info("{} --> Found peaks".format(g.objid))
 
+        for b in g.bands :
+            img = g.getPeaksMarked(b, True)
+            plt.imshow(img)
+            plt.axis('off')
+            plt.savefig(os.path.join(self.resFold, "{}-{}_result.png".format(g.objid, b)),
+                        bbox_inches='tight',
+                        pad_inches=0)
+            plt.close()
+
+        runlog.info("{} --> Results generated".format(g.objid))
         return g.csvLine(), g.progressLine()
 
     def classifyBatch (self) :
@@ -313,84 +326,14 @@ class Batch () :
             9. Performs the final classification based on connected components
         """
 
-        print ("Classifying the batch of {} galaxies".format(len(self.galaxies)))
+        print("Classifying the batch of {} galaxies".format(len(self.galaxies)))
         with conf.ThreadPoolExecutor() as exec :
             verds = [exec.submit(self.classifyGal, g) for g in self.galaxies]
 
             for i, f in enumerate(conf.as_completed(verds)) :
                 csvLine, progLine = f.result()
                 self.reslog.info(csvLine)
-                print("{}. {}".format(i, progLine))
+                print("{}. {}".format(i+1, progLine))
 
-        print ("Classification done!".format(len(self.galaxies)))
-
-    def genResults (self) :
-        """
-        Generates the result for every galaxy in the batch -
-        Plots the smoothed image with hull boundary and peaks, if any
-        """
-
-        resPath = os.path.join(self.batchFold, "Results")
-        if not os.path.isdir(resPath) :
-            os.mkdir(resPath)
-
-        runlog.info("Generating results for currently monitoring batch")
-        for i, g in enumerate(self.galaxies) :
-            for b in g.bands :
-                if b not in "ugirz" :
-                    continue
-
-                img = g.getPeaksMarked(b, True)
-                plt.imshow(img)
-                plt.axis('off')
-                plt.savefig(os.path.join(resPath, "{}-{}_result.png".format(g.objid, b)),
-                            bbox_inches='tight',
-                            pad_inches=0)
-                plt.close()
-
-            runlog.info("{}. {} --> Generated plot".format(i+1, g.objid))
-
-        runlog.info("Generated results for currently monitoring batch")
-        print("Results generated for the batch. Please check the contents of {}".format(self.resFold))
-
-    #############################################################################################################
-    #############################################################################################################
-
-    def procDiagnose(self, constrictHist=False, invHist=False) :
-        """
-        Generates the following for filtered galaxies only -
-            1. Hull without signal
-            2. Hull with signal
-            2. Scatter plot of intensity distribution and light profile fit
-        """
-
-        diagPath = os.path.join(self.batchFold, "Proc-Diag")
-        if not os.path.isdir(diagPath) :
-            os.mkdir(diagPath)
-
-        runlog.info("Diagnosing currently monitoring batch")
-        for i, g in enumerate(self.galaxies) :
-            for b, filt in g.filtrate.items() :
-                if filt :
-                    continue
-
-                # Hull without signal
-                img = g.getHullMarked(b)
-                svimg = Image.fromarray(img.astype(np.uint8))
-                svimg.save(os.path.join(diagPath, "{}-{}_hull.png".format(g.objid, b)))
-
-                # Hull with signal
-                img = g.getHullMarked(b, True)
-                svimg = Image.fromarray(img.astype(np.uint8))
-                svimg.save(os.path.join(diagPath, "{}-{}_hullSignal.png".format(g.objid, b)))
-
-                # Scatter and fit
-                argPack = g.getProfilePlot(b)
-                for args in argPack :
-                    plt.plot(*args["args"], **args["kwargs"])
-                plt.savefig(os.path.join(diagPath, "{}-{}_lightFit.png".format(g.objid, b)))
-                plt.close()
-
-            runlog.info("{}. {} --> Diagnosed".format(i+1, g.objid))
-
-        runlog.info("Diagnosed currently monitoring batch")
+        print("Classification done! Please check '{}'".format(self.resCsvPath))
+        print("Result plots available in directory '{}'".format(self.resFold))

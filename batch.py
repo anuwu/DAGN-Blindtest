@@ -278,7 +278,16 @@ class Batch () :
         return os.path.join(os.getcwd(), self.batchFold, "{}.log".format(self.batchName))
 
     def classifyGal (self, args) :
-        """ Performs the entire pipeline of operations for a single galaxy """
+        """
+        Performs the following for an argument
+            1. Instantiate the galaxy object
+            2. Read the FITS file and obtain the cutout
+            3. Smoothen the cutout data
+            3. Find the hull region where peak searching is done
+            4. Filter the bands in this galaxy where signal is unlikely to be found
+            5. Fit the intensity distribution to a light profile
+            6. Find the peaks using Stochastic Hill Climbing and DFS
+        """
 
         args += (self.fitsFold, self.bands)
         g = Galaxy(*args)
@@ -312,18 +321,8 @@ class Batch () :
 
     def classifyBatch (self) :
         """
-        For each galaxy in the batch's list, performs the following (multithreaded) -
-            1. Load the FITS file and do the cutout
-            2. Smoothen raw cutout data
-            3. Find the hull region where peak searching is done
-            4. Computes the intensity distribution in the hull region
-            5. Filters which galaxies are worth classifying or not based on
-            the above data. The steps below are only applied to objects that pass
-            through this filtration
-            6. Fits a gaussian to the intensity distribution
-            7. Computes the noise/signal cutoff
-            8. Performs stochastic gradient ascent to find a set of raw peaks
-            9. Performs the final classification based on connected components
+        Classifies each galaxy in parallel using multithreading, and
+        creates an entry in the result .csv file
         """
 
         print("Classifying the batch of {} galaxies".format(len(self.galaxies)))

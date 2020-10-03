@@ -1,6 +1,6 @@
 .ipynb_checkpoints/
 __pycache__/
-galaxy.log
+*.log
 Logs/*
 Batches/*/*
 BatchClass.ipynb

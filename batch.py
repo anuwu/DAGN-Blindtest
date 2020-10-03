@@ -50,7 +50,7 @@ class Batch () :
 
     batchRoot = "Batches"
 
-    def getBatch (batchName, bands="ri", rad=40, csv=None) :
+    def getBatch (batchName, bands="ugriz", rad=40, csv=None) :
         """ Class method to get a batch """
 
         try :
@@ -159,7 +159,7 @@ class Batch () :
 
         self.reslog = reslog
 
-    def __setClassList__ (self) :
+    def __setBatchList__ (self) :
         """ Sets the list of galaxies to classify -
             1. Reads the main .csv file
             2. Reads the .csv file which contains results of
@@ -188,12 +188,12 @@ class Batch () :
                 it and rerun!"
             )))
 
-        self.galaxies = [Galaxy(str(objid), (ra, dec), self.fitsFold, self.bands)
+        self.galaxies = [(str(objid), (ra, dec))
                         for objid, ra, dec
                         in zip(df["objID"], df["ra"], df["dec"])
                         if str(objid) not in resIDs]
 
-    def __init__ (self, batchName, csvName, bands="ri", rad=40) :
+    def __init__ (self, batchName, csvName, bands, rad) :
         """
         Constructor for the batch. Does the following -
             1. Sets up the folders/environment for the batch
@@ -227,7 +227,7 @@ class Batch () :
         self.__setBatchLogger__()
 
         # Initialises the galaxy objects that are yet to be classified in this batch
-        self.__setClassList__()
+        self.__setBatchList__()
 
         print("Batch successfully initialised. \
         \nThe classifications will be available at {} \
@@ -274,30 +274,28 @@ class Batch () :
         """ Property attribute - Path of the log file for the batch """
         return os.path.join(os.getcwd(), self.batchFold, "{}.log".format(self.batchName))
 
-    def classifyGal (self, gal) :
+    def classifyGal (self, args) :
         """ Performs the entire pipeline of operations for a single galaxy """
 
-        gal.download()
-        runlog.info("{} --> Downloaded".format(gal.objid))
-        gal.cutout()
-        runlog.info("{} --> Loaded and done cutout".format(gal.objid))
-        gal.smoothen()
-        runlog.info("{} --> Smoothed".format(gal.objid))
-        gal.hullRegion()
-        runlog.info("{} --> Found hull region".format(gal.objid))
-        gal.distInfo()
-        runlog.info("{} --> Comptued intensity distribution".format(gal.objid))
-        gal.filter()
-        runlog.info("{} --> Filtered".format(gal.objid))
-        gal.fitGaussian()
-        runlog.info("{} --> Fit gaussian".format(gal.objid))
-        gal.cutoffNoise()
-        runlog.info("{} --> Computed noise/signal cutoff".format(gal.objid))
-        gal.shc()
-        runlog.info("{} --> Performed stochastic hill climbing".format(gal.objid))
-        gal.verdict()
+        args += (self.fitsFold, self.bands)
+        g = Galaxy(*args)
 
-        return gal.getVerdLine(), gal.getCsvLine()
+        g.download()
+        runlog.info("{} --> Downloaded".format(g.objid))
+        g.cutout()
+        runlog.info("{} --> Loaded and done cutout".format(g.objid))
+        g.smoothen()
+        runlog.info("{} --> Smoothed".format(g.objid))
+        g.hullRegion()
+        runlog.info("{} --> Found hull region".format(g.objid))
+        g.filter()
+        runlog.info("{} --> Filtered".format(g.objid))
+        g.fitProfile()
+        runlog.info("{} --> Fit intensity profile".format(g.objid))
+        g.setPeaks()
+        runlog.info("{} --> Found peaks".format(g.objid))
+
+        return g.csvLine(), g.progressLine()
 
     def classifyBatch (self) :
         """
@@ -320,9 +318,9 @@ class Batch () :
             verds = [exec.submit(self.classifyGal, g) for g in self.galaxies]
 
             for i, f in enumerate(conf.as_completed(verds)) :
-                verdline, csvline = f.result()
-                self.reslog.info(csvline)
-                print("{}. {}".format(i, verdline))
+                csvLine, progLine = f.result()
+                self.reslog.info(csvLine)
+                print("{}. {}".format(i, progLine))
 
         print ("Classification done!".format(len(self.galaxies)))
 
@@ -342,7 +340,7 @@ class Batch () :
                 if b not in "ugirz" :
                     continue
 
-                img = g.getFinPeaksMarked(b, True)
+                img = g.getPeaksMarked(b, True)
                 plt.imshow(img)
                 plt.axis('off')
                 plt.savefig(os.path.join(resPath, "{}-{}_result.png".format(g.objid, b)),
@@ -361,8 +359,9 @@ class Batch () :
     def procDiagnose(self, constrictHist=False, invHist=False) :
         """
         Generates the following for filtered galaxies only -
-            1. Hull with signal
-            2. Scatter plot of intensity distribution and gaussian fit
+            1. Hull without signal
+            2. Hull with signal
+            2. Scatter plot of intensity distribution and light profile fit
         """
 
         diagPath = os.path.join(self.batchFold, "Proc-Diag")
@@ -375,16 +374,21 @@ class Batch () :
                 if filt :
                     continue
 
+                # Hull without signal
+                img = g.getHullMarked(b)
+                svimg = Image.fromarray(img.astype(np.uint8))
+                svimg.save(os.path.join(diagPath, "{}-{}_hull.png".format(g.objid, b)))
+
                 # Hull with signal
                 img = g.getHullMarked(b, True)
                 svimg = Image.fromarray(img.astype(np.uint8))
                 svimg.save(os.path.join(diagPath, "{}-{}_hullSignal.png".format(g.objid, b)))
 
                 # Scatter and fit
-                argPack = g.getGaussPlot(b)
-                for i in [0, 1, 2] :
-                    plt.plot(*argPack[i]["args"], **argPack[i]["kwargs"])
-                plt.savefig(os.path.join(diagPath, "{}-{}_gaussFit.png".format(g.objid, b)))
+                argPack = g.getProfilePlot(b)
+                for args in argPack :
+                    plt.plot(*args["args"], **args["kwargs"])
+                plt.savefig(os.path.join(diagPath, "{}-{}_lightFit.png".format(g.objid, b)))
                 plt.close()
 
             runlog.info("{}. {} --> Diagnosed".format(i+1, g.objid))

@@ -191,7 +191,7 @@ class Batch () :
                 it and rerun!"
             )))
 
-        self.galaxies = [(str(objid), (ra, dec))
+        self.galaxies = [Galaxy(str(objid), (ra, dec), self.fitsFold, self.bands)
                         for objid, ra, dec
                         in zip(df["objID"], df["ra"], df["dec"])
                         if str(objid) not in resIDs]
@@ -277,10 +277,10 @@ class Batch () :
         """ Property attribute - Path of the log file for the batch """
         return os.path.join(os.getcwd(), self.batchFold, "{}.log".format(self.batchName))
 
-    def classifyGal (self, args) :
+    def classifyGal (self, g) :
         """
         Performs the following for an argument
-            1. Instantiate the galaxy object
+            1. Download the FITS file if necessary
             2. Read the FITS file and obtain the cutout
             3. Smoothen the cutout data
             3. Find the hull region where peak searching is done
@@ -288,9 +288,6 @@ class Batch () :
             5. Fit the intensity distribution to a light profile
             6. Find the peaks using Stochastic Hill Climbing and DFS
         """
-
-        args += (self.fitsFold, self.bands)
-        g = Galaxy(*args)
 
         g.download()
         runlog.info("{} --> Downloaded".format(g.objid))
@@ -307,16 +304,6 @@ class Batch () :
         g.setPeaks()
         runlog.info("{} --> Found peaks".format(g.objid))
 
-        for b in g.bands :
-            img = g.getPeaksMarked(b, True)
-            plt.imshow(img)
-            plt.axis('off')
-            plt.savefig(os.path.join(self.resFold, "{}-{}_result.png".format(g.objid, b)),
-                        bbox_inches='tight',
-                        pad_inches=0)
-            plt.close()
-
-        runlog.info("{} --> Results generated".format(g.objid))
         return g.csvLine(), g.progressLine()
 
     def classifyBatch (self) :
@@ -336,3 +323,18 @@ class Batch () :
 
         print("Classification done! Please check '{}'".format(self.resCsvPath))
         print("Result plots available in directory '{}'".format(self.resFold))
+
+    def generateResults (self) :
+        """ Generates the hull-marked peak plots for all galaxies in all bands """
+
+        for g in self.galaxies :
+            for b in g.bands :
+                img = g.getPeaksMarked(b, True)
+                plt.imshow(img)
+                plt.axis('off')
+                plt.savefig(os.path.join(self.resFold, "{}-{}_result.png".format(g.objid, b)),
+                            bbox_inches='tight',
+                            pad_inches=0)
+                plt.close()
+
+            runlog.info("{} --> Results generated".format(g.objid))

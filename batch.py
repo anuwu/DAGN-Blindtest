@@ -306,7 +306,7 @@ class Batch () :
 
         return g.csvLine(), g.progressLine()
 
-    def classifyBatch (self) :
+    def classifyThreaded (self) :
         """
         Classifies each galaxy in parallel using multithreading, and
         creates an entry in the result .csv file
@@ -324,7 +324,13 @@ class Batch () :
         print("Classification done! Please check '{}'".format(self.resCsvPath))
         print("Result plots available in directory '{}'".format(self.resFold))
 
-    def generateResults (self) :
+    def classifySerial (self) :
+        for i, g in enumerate(self.galaxies) :
+            csvLine, progLine = self.classifyGal(g)
+            self.reslog.info(csvLine)
+            print("{}. {}".format(i+1, progLine))
+
+    def genResults (self) :
         """ Generates the hull-marked peak plots for all galaxies in all bands """
 
         for g in self.galaxies :

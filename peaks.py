@@ -243,7 +243,7 @@ class Peak () :
         seed = 0
 
         # Seed indices that each returns one connected component
-        while seed < noPts :
+        while True :
             comp = []
             dfs(seed, self.reg, vis, comp)
             # Mapping indices to mixel coordinates
@@ -251,8 +251,9 @@ class Peak () :
                 self.reg[i] for i in comp
             ]))
             # Find the next seed index, if it exists
-            while seed < noPts and vis[seed] :
-                seed += 1
+            seed = np.argmin(np.where(vis, 1, range(-noPts, 0, 1)))
+            if not seed :
+                break
 
         # Store the components
         self.comps = comps

@@ -118,6 +118,10 @@ class Peak () :
     def setRegion (self, hullRegion, noise) :
         """ Sets the search region where stochastic hill climbing will be done"""
 
+        if not noise :
+            self.reg = self.hullRegion
+            return
+
         self.reg = np.array([
             pt for pt in hullRegion if self.hillKey(tuple(pt)) >= noise
         ])
@@ -184,10 +188,10 @@ class Peak () :
         not np.array([x in peaks for x in pc.neighsInReg(pk, self.reg, tol)]).any() and\
         (boundPeak or len(pc.neighsInReg(pk, self.reg, 1)) == 8) and\
         (not highPeak or self.hillKey(pk) >= signal) and\
-        (snrNoise is None or np.mean([snrKey(p)
-                                        for p
-                                        in ([pk] + pc.neighsInReg(pk, self.reg, 1))
-                                        ])/snrNoise > 3)
+        (not snrNoise or np.mean([snrKey(p)
+                                for p
+                                in ([pk] + pc.neighsInReg(pk, self.reg, 1))
+                                ])/snrNoise > 3)
 
         # No need to keep track of iteration number
         log.info("Performing SHC for {} iterations".format(iters))
@@ -321,7 +325,7 @@ class Peak () :
         # Return the top two bright peaks in the best component after filtering
         # the ones, which are less than half-width half-maximum, out
         ######################################################################
-        bestPeaks = [pk for pk in comp_pk[compInds[0]] if self.hillKey(pk) >= signal]
+        bestPeaks = [pk for pk in comp_pk[compInds[0]] if not signal or self.hillKey(pk) >= signal]
 
         self.filtPeaks = sorted(bestPeaks, key=self.hillKey, reverse=True)[:2]
         log.info("Filtered down the peaks from SHC to {} peaks".format(len(self.filtPeaks)))

@@ -249,21 +249,36 @@ class Galaxy () :
                 self.dists[b] = None
                 log.info("{} --> Light profile fitting for {}-band filtered out".format(self.objid, b))
             else :
+                fitFail = False
                 if profile == 'sersic' :
                     sersFail = False
                     self.dists[b] = lightProfs[profile](series)
-                    self.dists[b].fit()
-                    if not (lp.Sersic.llim <= self.dists[b].params[1] <= lp.Sersic.rlim) :
+                    try :
+                        self.dists[b].fit()
+                    except RuntimeError as e :
+                        log.warning("{} --> Sersic profile fitting exceeded iteration limit".format(self.objid))
                         sersFail = True
-                        log.info("Failed to fit Sersic profile. Reverting to Gaussian")
+                    except Exception as e :
+                        log.warning("{} --> Error at Sersic fitting :\n{}".format(self.objid, e))
+                        sersFail = True
+                    else :
+                        if not (lp.Sersic.llim <= self.dists[b].params[1] <= lp.Sersic.rlim) :
+                            sersFail = True
+                            log.info("Failed to fit Sersic profile. Reverting to Gaussian")
 
                 if profile == 'gaussian' or (profile == 'sersic' and sersFail) :
                     self.dists[b] = lightProfs['gaussian'](series)
-                    self.dists[b].fit()
+                    try :
+                        self.dists[b].fit()
+                    except Exception as e :
+                        log.warning("{} --> Error at gaussian fitting :\n{}".format(self.objid, e))
+                        fitFail = True
 
-                self.dists[b].inferLevels()
-                self.dists[b].estimateNoise(self.cutouts[b], self.imgs[b])
-                log.info("{} --> Fit the light profile, inferred noise/signal and SNR noise for {}-band".format(self.objid, b))
+                if not fitFail :
+                    self.dists[b].inferLevels()
+                    self.dists[b].estimateNoise(self.cutouts[b], self.imgs[b])
+                    log.info("{} --> Fit the light profile, inferred noise/signal and SNR noise for {}-band".format(self.objid, b))
+
 
     def setPeaks (self) :
         """ Sets the Peak object for each band """

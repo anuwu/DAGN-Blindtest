@@ -77,7 +77,8 @@ class LightProfile () :
 
     def fit (self) :
         """ Generic code to perform the fitting """
-        self.params, self.cov = curve_fit(self.curveToFit, self.counts, self.grays, p0=self.initParams)
+        self.params, self.cov = curve_fit(self.curveToFit, self.counts, self.grays, p0=self.initParams, maxfev=5000)
+
 
         # Partially apply the fit parameters to expose the unary fit function
         self.fitCurve = self.fitCurve(*self.params)

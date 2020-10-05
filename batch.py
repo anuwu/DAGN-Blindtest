@@ -277,6 +277,29 @@ class Batch () :
         """ Property attribute - Path of the log file for the batch """
         return os.path.join(os.getcwd(), self.batchFold, "{}.log".format(self.batchName))
 
+    def downLoadGal (self, g) :
+        """ Downloads and loads the FITS file into memory """
+
+        g.download()
+        runlog.info("{} --> Downloaded".format(g.objid))
+        g.cutout()
+        runlog.info("{} --> Loaded and done cutout".format(g.objid))
+        return g
+
+    def procGal (self, g) :
+        g.smoothen()
+        runlog.info("{} --> Smoothed".format(g.objid))
+        g.hullRegion()
+        runlog.info("{} --> Found hull region".format(g.objid))
+        g.filter()
+        runlog.info("{} --> Filtered".format(g.objid))
+        g.fitProfile()
+        runlog.info("{} --> Fit intensity profile".format(g.objid))
+        g.setPeaks()
+        runlog.info("{} --> Found peaks".format(g.objid))
+
+        return g.csvLine(), g.progressLine()
+
     def classifyGal (self, g) :
         """
         Performs the following for an argument
@@ -329,6 +352,21 @@ class Batch () :
             csvLine, progLine = self.classifyGal(g)
             self.reslog.info(csvLine)
             print("{}. {}".format(i+1, progLine))
+
+    def classify_Tdl_Sproc (self) :
+        """ Threaded download and loading, serialised classification """
+
+        with conf.ThreadPoolExecutor() as exec :
+            verds = [exec.submit(self.downLoadGal, g) for g in self.galaxies]
+
+            for i, fin in enumerate(conf.as_completed(verds)) :
+                g = fin.result()
+                csvLine, progLine = self.procGal(g)
+                self.reslog.info(csvLine)
+                print("{}. {}".format(i+1, progLine))
+
+        print("Classification done! Please check '{}'".format(self.resCsvPath))
+        print("Result plots available in directory '{}'".format(self.resFold))
 
     def genResults (self) :
         """ Generates the hull-marked peak plots for all galaxies in all bands """

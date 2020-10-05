@@ -216,7 +216,7 @@ class Galaxy () :
             1. Cutout is None                                       --> FITS failure
             2. Smoothed image is empty                              --> No appreciable signal that can be processed well by LogNorm
             3. Hull boundary is empty                               --> No sharp object in the image, mostly dark
-            4. Hull region is empty                                 --> Object too small to conduct shc
+            4. Hull region is empty or has length < 2               --> Object too small to performing light fitting/SHC
             5. Centre is not in hull region                         --> Hull encloses an object with a different SDSS objID
         If true, do not classify. Finding an object/signal is highly improbable
         """
@@ -227,7 +227,7 @@ class Galaxy () :
                 self.filtrate[b] = cuts is None or\
                                 not self.imgs[b].size or\
                                 not self.hullCoods[b].size or\
-                                not self.hullRegs[b].size or\
+                                not self.hullRegs[b].size or len(self.hullRegs[b]) <= 2 or\
                                 not pc.isPointIn((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b])
                 log.info("{} --> Calculated filtrate for {}-band".format(self.objid, b))
         else :

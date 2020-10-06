@@ -304,7 +304,6 @@ class Galaxy () :
             if os.path.exists(p) :
                 os.remove(p)
 
-
     def csvLine (self) :
         """
         Returns the line which will be simply written to the .csv

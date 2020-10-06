@@ -312,20 +312,24 @@ class Batch () :
             6. Find the peaks using Stochastic Hill Climbing and DFS
         """
 
-        g.download()
-        runlog.info("{} --> Downloaded".format(g.objid))
-        g.cutout()
-        runlog.info("{} --> Loaded and done cutout".format(g.objid))
-        g.smoothen()
-        runlog.info("{} --> Smoothed".format(g.objid))
-        g.hullRegion()
-        runlog.info("{} --> Found hull region".format(g.objid))
-        g.filter()
-        runlog.info("{} --> Filtered".format(g.objid))
-        g.fitProfile()
-        runlog.info("{} --> Fit intensity profile".format(g.objid))
-        g.setPeaks()
-        runlog.info("{} --> Found peaks".format(g.objid))
+        try :
+            g.download()
+            runlog.info("{} --> Downloaded".format(g.objid))
+            g.cutout()
+            runlog.info("{} --> Loaded and done cutout".format(g.objid))
+            g.smoothen()
+            runlog.info("{} --> Smoothed".format(g.objid))
+            g.hullRegion()
+            runlog.info("{} --> Found hull region".format(g.objid))
+            g.filter()
+            runlog.info("{} --> Filtered".format(g.objid))
+            g.fitProfile()
+            runlog.info("{} --> Fit intensity profile".format(g.objid))
+            g.setPeaks()
+            runlog.info("{} --> Found peaks".format(g.objid))
+        except Exception as e :
+            runlog.info("{} --> ERROR : {}".format(g.objid, e))
+            return str(g.objid) + 10*",ERROR", str(g.objid) + " -->" + 5*" ERROR"
 
         return g.csvLine(), g.progressLine()
 

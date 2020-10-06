@@ -279,7 +279,6 @@ class Galaxy () :
                     self.dists[b].estimateNoise(self.cutouts[b], self.imgs[b])
                     log.info("{} --> Fit the light profile, inferred noise/signal and SNR noise for {}-band".format(self.objid, b))
 
-
     def setPeaks (self) :
         """ Sets the Peak object for each band """
 
@@ -296,6 +295,14 @@ class Galaxy () :
                 log.info("{} --> Set peaks for {}-band".format(self.objid, b))
 
             self.peaks[b].setType()
+
+    def delete(self) :
+        """ Deletes all the downloaded FITS files"""
+
+        paths = [self.getFitsPath(b) for b in self.bands]
+        for p in paths :
+            if os.path.exists(p) :
+                os.remove(p)
 
     def csvLine (self) :
         """

@@ -327,11 +327,14 @@ class Batch () :
             runlog.info("{} --> Fit intensity profile".format(g.objid))
             g.setPeaks()
             runlog.info("{} --> Found peaks".format(g.objid))
+            ret = (g.csvLine(), g.progressLine())
         except Exception as e :
             runlog.info("{} --> ERROR : {}".format(g.objid, e))
-            return str(g.objid) + 10*",ERROR", str(g.objid) + " -->" + 5*" ERROR"
+            ret = (str(g.objid) + 10*",ERROR", str(g.objid) + " -->" + 5*" ERROR")
 
-        return g.csvLine(), g.progressLine()
+        g.delete()
+        runlog.info("{} --> Deleted files".format(g.objid))
+        return ret
 
     def classifyThreaded (self) :
         """

@@ -191,7 +191,7 @@ class Batch () :
                 it and rerun!"
             )))
 
-        self.galaxies = [Galaxy(str(objid), (ra, dec), self.fitsFold, self.bands)
+        self.galaxies = [(str(objid), (ra, dec))
                         for objid, ra, dec
                         in zip(df["objID"], df["ra"], df["dec"])
                         if str(objid) not in resIDs]
@@ -300,7 +300,7 @@ class Batch () :
 
         return g.csvLine(), g.progressLine()
 
-    def classifyGal (self, g) :
+    def classifyGal (self, args) :
         """
         Performs the following for an argument
             1. Download the FITS file if necessary
@@ -313,6 +313,8 @@ class Batch () :
         """
 
         try :
+            args += (self.fitsFold, self.bands)
+            g = Galaxy(*args)
             g.download()
             runlog.info("{} --> Downloaded".format(g.objid))
             g.cutout()
@@ -334,6 +336,7 @@ class Batch () :
 
         g.delete()
         runlog.info("{} --> Deleted files".format(g.objid))
+        del g
         return ret
 
     def classifyThreaded (self) :
@@ -355,8 +358,8 @@ class Batch () :
         print("Result plots available in directory '{}'".format(self.resFold))
 
     def classifySerial (self) :
-        for i, g in enumerate(self.galaxies) :
-            csvLine, progLine = self.classifyGal(g)
+        for i, args in enumerate(self.galaxies) :
+            csvLine, progLine = self.classifyGal(args)
             self.reslog.info(csvLine)
             print("{}. {}".format(i+1, progLine))
 

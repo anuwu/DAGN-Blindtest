@@ -155,7 +155,7 @@ class Batch () :
         reslog.addHandler(resFH)
 
         if writeHeader :
-            reslog.info("objID,u-type,u-peaks,g-type,g-peaks,r-type,r-peaks,i-type,i-peaks,z-type,z-peaks")
+            reslog.info("objid,u-type,u-peaks,g-type,g-peaks,r-type,r-peaks,i-type,i-peaks,z-type,z-peaks")
             runlog.info("Created result csv")
         else :
             runlog.info("Result csv already exists")
@@ -173,10 +173,10 @@ class Batch () :
 
         # try block to read the master .csv file
         try :
-            df = pd.read_csv(self.csvPath, dtype=object, usecols=["objID", "ra", "dec"])
+            df = pd.read_csv(self.csvPath, dtype=object, usecols=["objid", "ra", "dec"])
         except ValueError as e :
             runlog.critical("Invalid columns in .csv file\n\n{}".format(Batch.logFixFmt(
-                "Please ensure columns 'objID', 'ra' and 'dec' are present in the .csv \
+                "Please ensure columns 'objid', 'ra' and 'dec' are present in the .csv \
                 file (in that order) and rerun!"
                 )))
             raise e
@@ -184,16 +184,16 @@ class Batch () :
         # try block to read the result .csv file
         try :
             resIDs = [] if not os.path.exists(self.resCsvPath) else\
-                    list(pd.read_csv(self.resCsvPath, dtype=object)['objID'])
+                    list(pd.read_csv(self.resCsvPath, dtype=object)['objid'])
         except ValueError as e :
             runlog.critical("Error in loading result csv file\n\n{}".format(Batch.logFixFmt(
-                "Please ensure the first column in 'objID'. If the file is corrupted, delete \
+                "Please ensure the first column in 'objid'. If the file is corrupted, delete \
                 it and rerun!"
             )))
 
         self.galaxies = [(str(objid), (ra, dec))
                         for objid, ra, dec
-                        in zip(df["objID"], df["ra"], df["dec"])
+                        in zip(df["objid"], df["ra"], df["dec"])
                         if str(objid) not in resIDs]
 
     def __init__ (self, batchName, csvName, bands, rad) :
@@ -361,7 +361,8 @@ class Batch () :
         for i, args in enumerate(self.galaxies) :
             csvLine, progLine = self.classifyGal(args)
             self.reslog.info(csvLine)
-            print("{}. {}".format(i+1, progLine))
+            # print("{}. {}".format(i+1, progLine))
+            print(csvLine)
 
     def classify_Tdl_Sproc (self) :
         """ Threaded download and loading, serialised classification """

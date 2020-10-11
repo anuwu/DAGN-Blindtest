@@ -233,6 +233,8 @@ class Galaxy () :
         else :
             self.filtrate = {b:True for b in self.bands if b in "ugriz"}
 
+        self.filtrate['z'] = True
+
     def fitProfile (self, profile='sersic') :
         """
         Receives a distribution object for each band based on the

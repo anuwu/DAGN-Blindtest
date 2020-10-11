@@ -8,7 +8,7 @@ from enum import Enum
 from collections import OrderedDict
 
 # Override system recursion limit for DFS
-sys.setrecursionlimit(10**6)
+sys.setrecursionlimit(10**8)
 
 # Setting the logger
 log = logging.getLogger(__name__)
@@ -232,6 +232,7 @@ class Peak () :
         def dfs (ind, reg, vis, comp) :
             """ Visiting function for depth first search """
 
+            log.debug("Visiting index {}".format(ind))
             # Mark current index as visited
             vis[ind] = True
             # Append current index to the present component that is being created
@@ -249,6 +250,7 @@ class Peak () :
         # Seed indices that each returns one connected component
         while True :
             comp = []
+            log.debug("With a seed {}".format(seed))
             dfs(seed, self.reg, vis, comp)
             # Mapping indices to mixel coordinates
             comps.append(np.array([
@@ -296,6 +298,7 @@ class Peak () :
         # Obtain connected components
         log.info("2 or more peaks. Running DFS")
         self.connectedComponents()
+        log.debug("After DFS")
 
         ######################################################################
         # Returns the distance from the centre of the image to the centre of
@@ -309,6 +312,7 @@ class Peak () :
         comp_pk = {i:[p for p in self.hillOpts if pc.isPointIn(p, c)] for i,c in enumerate(self.comps)}
         # Dict --> component index : distance from centre of image to centre of component
         comp_dist = {i:compCentreDist(c, imCent) for i,c in enumerate(self.comps)}
+        log.debug("After dicts")
 
         ######################################################################
         # Comparator function for regions -

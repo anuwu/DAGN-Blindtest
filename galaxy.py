@@ -410,7 +410,11 @@ class Galaxy () :
             img[pc.coodIndexer(hi)] = np.array(Galaxy.hullMarker)
             if sig :
                 noise = 0 if self.filtrate[b] else self.dists[b].noise
-                img[img[...,0] > noise] = np.array(Galaxy.signalMarker)
+                regSig = np.array([
+                    pt for pt in self.hullRegs[b]
+                    if self.imgs[b][pt[0], pt[1]] > noise
+                ])
+                img[pc.coodIndexer(regSig)] = np.array(Galaxy.signalMarker)
 
         return Galaxy.copyRet(hullMarks, bands, asDict)
 

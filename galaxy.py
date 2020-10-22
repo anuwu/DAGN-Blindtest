@@ -189,7 +189,8 @@ class Galaxy () :
             # hasn't already been loaded in memory
             ######################################################################
             if b in "ugriz" and self.cutouts[b] is None :
-                self.cutouts[b] = fp.cutout(self.getFitsPath(b), self.cood, rad)
+                ret = fp.cutout(self.getFitsPath(b), self.cood, rad)
+                self.cutouts[b] = None if ret is None else ret.data
                 log.info("{} --> Got cutout for {}-band".format(self.objid, b))
 
     def smoothen (self, reduc=2, sgx=5, sgy=5) :

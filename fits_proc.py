@@ -72,7 +72,7 @@ def cutout (fitsPath, cood, rad) :
     size = u.Quantity((rad, rad), u.arcsec)
 
     log.info("Performed cutout for '{}'".format(fitsPath))
-    return Cutout2D(hdu.data, position, size, wcs=wcs).data
+    return Cutout2D(hdu.data, position, size, wcs=wcs)
 
 def smoothen (img, reduc, sgx, sgy) :
     """

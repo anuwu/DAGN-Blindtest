@@ -109,7 +109,7 @@ def scrapeBandLinks (repoLink) :
     log.info("Scraped band links from '{}'".format(repoLink))
     return dlinks
 
-def downloadExtract (objid, band, dlink, folder, fname) :
+def downloadExtract (objid, band, dlink, folder, fitsPath) :
     """
     Downloads the .bz2 archive for a FITS file and extracts it
         objid           - SDSS object
@@ -141,10 +141,10 @@ def downloadExtract (objid, band, dlink, folder, fname) :
         # {objid}-{band}.fits
         ######################################################################
         open(extractPath, 'wb').write(data) ;
-        os.rename(extractPath, fname)       # getFitsPath(band)
+        os.rename(extractPath, fitsPath)
         os.remove(dPath)
     except Exception as e :
         log.error("Failed to extract .bz2 archive for {} in {}-band".format(objid, band))
         raise BZ2ExtractError("Failed to extract .bz2 archive due to {}".format(type(e)))
 
-    log.info("Extracted .bz2 for {} in {}-band to '{}'".format(objid, band, fname))
+    log.info("Extracted .bz2 for {} in {}-band to '{}'".format(objid, band, fitsPath))

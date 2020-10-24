@@ -185,7 +185,6 @@ class Peak () :
         # in the above order
         ######################################################################
         validPeak = lambda pk :\
-        not np.array([x in peaks for x in pc.neighsInReg(pk, self.reg, tol)]).any() and\
         (boundPeak or len(pc.neighsInReg(pk, self.reg, 1)) == 8) and\
         (not highPeak or self.hillKey(pk) >= signal) and\
         (not snrNoise or np.mean([snrKey(p)
@@ -195,9 +194,9 @@ class Peak () :
 
         # No need to keep track of iteration number
         log.info("Performing SHC for {} iterations".format(iters))
-        for _ in range(0, iters) :
+        for _ in range(iters) :
             # Step 1
-            st = pk = pt = tuple(self.reg[np.random.choice(range(0, len(self.reg)))])
+            st = pk = pt = tuple(self.reg[np.random.choice(range(len(self.reg)))])
             while pt :
                 ######################################################################
                 # If at any point in the interation, the list of neighboring 7x7 points
@@ -210,6 +209,7 @@ class Peak () :
 
                 # Step 2
                 mxn = max(ns, key=self.hillKey)
+
                 # Step 3
                 pk = pt
                 pt = mxn if self.hillKey(mxn) > self.hillKey(pt) else None # Step 4 (Termination)
@@ -232,7 +232,6 @@ class Peak () :
         def dfs (ind, reg, vis, comp) :
             """ Visiting function for depth first search """
 
-            log.debug("Visiting index {}".format(ind))
             # Mark current index as visited
             vis[ind] = True
             # Append current index to the present component that is being created
@@ -250,7 +249,6 @@ class Peak () :
         # Seed indices that each returns one connected component
         while True :
             comp = []
-            log.debug("With a seed {}".format(seed))
             dfs(seed, self.reg, vis, comp)
             # Mapping indices to mixel coordinates
             comps.append(np.array([
@@ -298,7 +296,6 @@ class Peak () :
         # Obtain connected components
         log.info("2 or more peaks. Running DFS")
         self.connectedComponents()
-        log.debug("After DFS")
 
         ######################################################################
         # Returns the distance from the centre of the image to the centre of
@@ -312,7 +309,6 @@ class Peak () :
         comp_pk = {i:[p for p in self.hillOpts if pc.isPointIn(p, c)] for i,c in enumerate(self.comps)}
         # Dict --> component index : distance from centre of image to centre of component
         comp_dist = {i:compCentreDist(c, imCent) for i,c in enumerate(self.comps)}
-        log.debug("After dicts")
 
         ######################################################################
         # Comparator function for regions -
@@ -323,7 +319,7 @@ class Peak () :
                 or (comp_dist[c1] == comp_dist[c2] and len(self.comps[c1]) > len(self.comps[c2]))
 
         # Sort the list of indices according to the comparator 'regless'
-        compInds = sorted(range(0, len(self.comps)), key=Peak.comparatorKey(regLess))
+        compInds = sorted(range(len(self.comps)), key=Peak.comparatorKey(regLess))
 
         ######################################################################
         # Return the top two bright peaks in the best component after filtering

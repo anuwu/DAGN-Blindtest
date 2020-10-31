@@ -31,6 +31,7 @@ class Galaxy () :
     to detect whether it is a double nuclei galaxy or not
     """
 
+    default_bands = "ugri"
     # For marking the hulls
     hullMarker = (0, 0, 255)
     # Color for marking the peaks found by shc
@@ -71,7 +72,7 @@ class Galaxy () :
     #############################################################################################################
     #############################################################################################################
 
-    def __init__ (self, objid, cood, fitsFold, bands="ugriz") :
+    def __init__ (self, objid, cood, fitsFold, bands=Galaxy.default_bands) :
         """
         Constructor for the galaxy object
             objid       - Object id                 (from .csv file)
@@ -122,7 +123,7 @@ class Galaxy () :
         # 2. FITS file has failed to open
         # 3. Cutout from FITS file has failed
         ######################################################################
-        self.cutouts = {b:None for b in bands if b in "ugriz"}
+        self.cutouts = {b:None for b in bands if b in Galaxy.default_bands}
 
         log.info("{} --> Initialised".format(self.objid))
 
@@ -138,7 +139,7 @@ class Galaxy () :
         """
 
         # Bands that remain to be downloaded. Ignores invalid bands in 'band' attribute
-        toDown = [b for b in self.bands if b in "ugriz" and not os.path.exists(self.getFitsPath(b))]
+        toDown = [b for b in self.bands if b in Galaxy.default_bands and not os.path.exists(self.getFitsPath(b))]
         if not toDown :
             log.info("{} --> FITS files of all bands already downloaded".format(self.objid))
             return
@@ -148,11 +149,11 @@ class Galaxy () :
         try :
             self.repoLink = scrap.scrapeRepoLink(self.objid)
         except scrap.RepoScrapeError as e :
-            self.peaks = {b:pk.Peak(b, None, pk.GalType.DOWN_FAIL) for b in self.bands if b in "ugriz"}
+            self.peaks = {b:pk.Peak(b, None, pk.GalType.DOWN_FAIL) for b in self.bands if b in Galaxy.default_bands}
             log.warning("{} --> Setting all peaks as DOWN_FAIL : {}".format(self.objid, e.msg))
 
         if self.repoLink is None :
-            self.peaks = {b:pk.Peak(b, pk.GalType.INVALID_OBJID) for b in self.bands if b in "ugriz"}
+            self.peaks = {b:pk.Peak(b, pk.GalType.INVALID_OBJID) for b in self.bands if b in Galaxy.default_bands}
             log.warning("{} --> Setting all peaks as INVALID_OBJID".format(self.objid))
             return
 
@@ -162,7 +163,7 @@ class Galaxy () :
         try :
             self.downLinks = scrap.scrapeBandLinks(self.repoLink)
         except scrap.BandScrapeError as e :
-            self.peaks = {b:pk.Peak(b, None, pk.GalType.DOWN_FAIL) for b in self.bands if b in "ugriz"}
+            self.peaks = {b:pk.Peak(b, None, pk.GalType.DOWN_FAIL) for b in self.bands if b in Galaxy.default_bands}
             log.warning("{} --> Setting all peaks as DOWN_FAIL : {}".format(self.objid, e.msg))
 
         log.info("{} --> FITS bands download links retrieved".format(self.objid))
@@ -188,7 +189,7 @@ class Galaxy () :
             # Considers valid bands only and does cutout only if cutout of that band
             # hasn't already been loaded in memory
             ######################################################################
-            if b in "ugriz" and self.cutouts[b] is None :
+            if b in Galaxy.default_bands and self.cutouts[b] is None :
                 ret = fp.cutout(self.getFitsPath(b), self.cood, rad)
                 self.cutouts[b] = None if ret is None else ret.data
                 log.info("{} --> Got cutout for {}-band".format(self.objid, b))
@@ -232,7 +233,7 @@ class Galaxy () :
                                 not pc.isPointIn((self.imgs[b].shape[0]//2, self.imgs[b].shape[1]//2), self.hullRegs[b])
                 log.info("{} --> Calculated filtrate for {}-band".format(self.objid, b))
         else :
-            self.filtrate = {b:True for b in self.bands if b in "ugriz"}
+            self.filtrate = {b:True for b in self.bands if b in Galaxy.default_bands}
 
         self.filtrate['z'] = True
 
@@ -315,7 +316,7 @@ class Galaxy () :
         """
 
         band_entry = {b:pk.csvColumn() for b, pk in self.peaks.items()}
-        args = tuple([str(self)] + [band_entry[b] for b in "ugriz"])
+        args = tuple([str(self)] + [band_entry[b] for b in Galaxy.default_bands])
         return "{},{},{},{},{},{}".format(*args)
 
     def progressLine (self) :

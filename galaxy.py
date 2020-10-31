@@ -72,7 +72,7 @@ class Galaxy () :
     #############################################################################################################
     #############################################################################################################
 
-    def __init__ (self, objid, cood, fitsFold, bands=Galaxy.default_bands) :
+    def __init__ (self, objid, cood, fitsFold, bands="ugri") :
         """
         Constructor for the galaxy object
             objid       - Object id                 (from .csv file)

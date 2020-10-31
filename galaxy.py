@@ -82,7 +82,7 @@ class Galaxy () :
         """
 
         (self.objid,                    # Object ID as a string
-        self.bands,                     # Bands in (u, g, r, i, z) in which to classify
+        self.bands,                     # Bands in (u, g, r, i) in which to classify
         self.cood,                      # Celestial coordinates of the object
         self.fitsFold,                  # Folder where the FITS image of the object should be downloaded
         self.repoLink,                  # Repository link of the FITS file
@@ -235,8 +235,6 @@ class Galaxy () :
         else :
             self.filtrate = {b:True for b in self.bands if b in Galaxy.default_bands}
 
-        self.filtrate['z'] = True
-
     def fitProfile (self, profile='sersic') :
         """
         Receives a distribution object for each band based on the
@@ -312,12 +310,12 @@ class Galaxy () :
         """
         Returns the line which will be simply written to the .csv
         file corresponding to this galaxy. Galaxy type along with position
-        of peaks in order of 'ugriz'
+        of peaks in order of 'ugri'
         """
 
         band_entry = {b:pk.csvColumn() for b, pk in self.peaks.items()}
         args = tuple([str(self)] + [band_entry[b] for b in Galaxy.default_bands])
-        return "{},{},{},{},{},{}".format(*args)
+        return "{},{},{},{},{}".format(*args)
 
     def progressLine (self) :
         """ Returns a line to output the batch's progress """

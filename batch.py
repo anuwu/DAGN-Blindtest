@@ -332,7 +332,7 @@ class Batch () :
             ret = (g.csvLine(), g.progressLine())
         except Exception as e :
             runlog.info("{} --> ERROR : {}".format(g.objid, e))
-            ret = (str(g.objid) + 10*",ERROR", str(g.objid) + " -->" + 5*" ERROR")
+            ret = (str(g.objid) + 2*len(self.bands)*",ERROR", str(g.objid) + " -->" + len(self.bands)*" ERROR")
 
         g.delete()
         runlog.info("{} --> Deleted files".format(g.objid))

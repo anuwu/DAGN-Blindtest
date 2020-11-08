@@ -71,11 +71,15 @@ def scrapeRepoLink (objid) :
 
     # Finding the tag which contains the FITS repository link
     tagType = type(bs4.BeautifulSoup('<b class="boldest">Extremely bold</b>' , features = 'lxml').b)
+    fitsLinkTag = None
     for c in soup.select('.s') :
         tag = c.contents[0]
         fitsLinkTag = str(tag)
         if tagType == type(tag) and fitsLinkTag.find('Get FITS') > -1 :
             break
+
+    if fitsLinkTag is None :
+        return None
 
     fitsLinkTag = fitsLinkTag[fitsLinkTag.find('"')+1:]
     fitsLinkTag = fitsLinkTag[:fitsLinkTag.find('"')].replace("amp;",'')

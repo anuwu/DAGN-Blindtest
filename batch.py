@@ -47,7 +47,7 @@ class Batch () :
 
     batchRoot = "Batches"
 
-    def getBatch (batchName, bands="ugriz", rad=40, csv=None) :
+    def getBatch (batchName, bands=Galaxy.default_bands, rad=40, csv=None) :
         """ Class method to get a batch """
 
         try :
@@ -155,7 +155,7 @@ class Batch () :
         reslog.addHandler(resFH)
 
         if writeHeader :
-            reslog.info("objid,u-type,u-peaks,g-type,g-peaks,r-type,r-peaks,i-type,i-peaks,z-type,z-peaks")
+            reslog.info("objid,u-type,u-peaks,g-type,g-peaks,r-type,r-peaks,i-type,i-peaks")
             runlog.info("Created result csv")
         else :
             runlog.info("Result csv already exists")
@@ -211,7 +211,7 @@ class Batch () :
         runlog.info("Successfully created environment for batch")
 
         # Function to check if the band(s) supplied by the user is valid
-        areBandsValid = lambda bs : len([b for b in bs if b in "ugriz"]) == len(bs) != 0
+        areBandsValid = lambda bs : len([b for b in bs if b in Galaxy.default_bands]) == len(bs) != 0
 
         ######################################################################
         # If the bands are not valid, a warning is logged
@@ -220,9 +220,9 @@ class Batch () :
         ######################################################################
         if not areBandsValid(bands) :
             runlog.warning("One or more bands in '{}' invalid\n\n{}".format(bands, Batch.logFixFmt(
-            "Please ensure that bands are a combination of 'ugriz' only!"
+            "Please ensure that bands are a combination of 'ugri' only!"
             )))
-            raise ValueError("Invalid Band. Please use 'ugriz'")
+            raise ValueError("Invalid Band. Please use 'ugri'")
 
         self.bands = bands
 
@@ -332,7 +332,7 @@ class Batch () :
             ret = (g.csvLine(), g.progressLine())
         except Exception as e :
             runlog.info("{} --> ERROR : {}".format(g.objid, e))
-            ret = (str(g.objid) + 10*",ERROR", str(g.objid) + " -->" + 5*" ERROR")
+            ret = (str(g.objid) + 2*len(self.bands)*",ERROR", str(g.objid) + " -->" + len(self.bands)*" ERROR")
 
         g.delete()
         runlog.info("{} --> Deleted files".format(g.objid))

@@ -277,29 +277,6 @@ class Batch () :
         """ Property attribute - Path of the log file for the batch """
         return os.path.join(os.getcwd(), self.batchFold, "{}.log".format(self.batchName))
 
-    def downLoadGal (self, g) :
-        """ Downloads and loads the FITS file into memory """
-
-        g.download()
-        runlog.info("{} --> Downloaded".format(g.objid))
-        g.cutout()
-        runlog.info("{} --> Loaded and done cutout".format(g.objid))
-        return g
-
-    def procGal (self, g) :
-        g.smoothen()
-        runlog.info("{} --> Smoothed".format(g.objid))
-        g.hullRegion()
-        runlog.info("{} --> Found hull region".format(g.objid))
-        g.filter()
-        runlog.info("{} --> Filtered".format(g.objid))
-        g.fitProfile()
-        runlog.info("{} --> Fit intensity profile".format(g.objid))
-        g.setPeaks()
-        runlog.info("{} --> Found peaks".format(g.objid))
-
-        return g.csvLine(), g.progressLine()
-
     def classifyGal (self, args) :
         """
         Performs the following for an argument
@@ -329,60 +306,7 @@ class Batch () :
             runlog.info("{} --> Fit intensity profile".format(g.objid))
             g.setPeaks()
             runlog.info("{} --> Found peaks".format(g.objid))
-            ret = (g.csvLine(), g.progressLine())
-        except Exception as e :
-            runlog.info("{} --> ERROR : {}".format(g.objid, e))
-            ret = (str(g.objid) + 2*len(self.bands)*",ERROR", str(g.objid) + " -->" + len(self.bands)*" ERROR")
 
-        g.delete()
-        runlog.info("{} --> Deleted files".format(g.objid))
-        del g
-        return ret
-
-    def classifyThreaded (self) :
-        """
-        Classifies each galaxy in parallel using multithreading, and
-        creates an entry in the result .csv file
-        """
-
-        print("Classifying the batch of {} galaxies".format(len(self.galaxies)))
-        with conf.ThreadPoolExecutor() as exec :
-            verds = [exec.submit(self.classifyGal, g) for g in self.galaxies]
-
-            for i, f in enumerate(conf.as_completed(verds)) :
-                csvLine, progLine = f.result()
-                self.reslog.info(csvLine)
-                print("{}. {}".format(i+1, progLine))
-
-        print("Classification done! Please check '{}'".format(self.resCsvPath))
-        print("Result plots available in directory '{}'".format(self.resFold))
-
-    def classifySerial (self) :
-        for i, args in enumerate(self.galaxies) :
-            csvLine, progLine = self.classifyGal(args)
-            self.reslog.info(csvLine)
-            # print("{}. {}".format(i+1, progLine))
-            print(csvLine)
-
-    def classify_Tdl_Sproc (self) :
-        """ Threaded download and loading, serialised classification """
-
-        with conf.ThreadPoolExecutor() as exec :
-            verds = [exec.submit(self.downLoadGal, g) for g in self.galaxies]
-
-            for i, fin in enumerate(conf.as_completed(verds)) :
-                g = fin.result()
-                csvLine, progLine = self.procGal(g)
-                self.reslog.info(csvLine)
-                print("{}. {}".format(i+1, progLine))
-
-        print("Classification done! Please check '{}'".format(self.resCsvPath))
-        print("Result plots available in directory '{}'".format(self.resFold))
-
-    def genResults (self) :
-        """ Generates the hull-marked peak plots for all galaxies in all bands """
-
-        for g in self.galaxies :
             for b in g.bands :
                 img = g.getPeaksMarked(b, True)
                 plt.imshow(img)
@@ -393,3 +317,18 @@ class Batch () :
                 plt.close()
 
             runlog.info("{} --> Results generated".format(g.objid))
+            ret = (g.csvLine(), g.progressLine())
+        except Exception as e :
+            runlog.info("{} --> ERROR : {}".format(g.objid, e))
+            ret = (str(g.objid) + 2*len(self.bands)*",ERROR", str(g.objid) + " -->" + len(self.bands)*" ERROR")
+
+        g.delete()
+        runlog.info("{} --> Deleted files".format(g.objid))
+        del g
+        return ret
+
+    def classifySerial (self) :
+        for i, args in enumerate(self.galaxies) :
+            csvLine, progLine = self.classifyGal(args)
+            self.reslog.info(csvLine)
+            print("{}. {}".format(i+1, progLine))

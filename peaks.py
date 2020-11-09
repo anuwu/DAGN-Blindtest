@@ -24,6 +24,25 @@ for h in log.handlers :
 log.addHandler(fileHandler)
 log.info("Welcome!")
 
+def comparatorKey (cmp) :
+    """Convert a cmp= function into a key= function"""
+    class K:
+        def __init__(self, key, *args):
+            self.key = key
+        def __lt__(self, other):
+            return cmp(self.key, other.key)
+        def __gt__(self, other):
+            return not self.__lt__(other) and not self.__eq__(other)
+        def __eq__(self, other):
+            return not self.__lt__(other) and not cmp(other.key, self.key)
+        def __le__(self, other):
+            return self.__lt__(other) or self.__eq__(other)
+        def __ge__(self, other):
+            return not self.__lt__(other)
+        def __ne__(self, other):
+            return not self.__eq__(other)
+    return K
+
 class GalType (Enum) :
     """
     Enum for the final verdict of a galaxy
@@ -54,25 +73,6 @@ class Peak () :
 
     # Empty list of peaks
     emptyPeaks = OrderedDict({})
-
-    def comparatorKey (cmp) :
-        """Convert a cmp= function into a key= function"""
-        class K:
-            def __init__(self, key, *args):
-                self.key = key
-            def __lt__(self, other):
-                return cmp(self.key, other.key)
-            def __gt__(self, other):
-                return not self.__lt__(other) and not self.__eq__(other)
-            def __eq__(self, other):
-                return not self.__lt__(other) and not cmp(other.key, self.key)
-            def __le__(self, other):
-                return self.__lt__(other) or self.__eq__(other)
-            def __ge__(self, other):
-                return not self.__lt__(other)
-            def __ne__(self, other):
-                return not self.__eq__(other)
-        return K
 
     def __init__ (self, band, hillKey=None, btype=None) :
         """Constructor for the Peak object
@@ -170,16 +170,16 @@ class Peak () :
 
         ######################################################################
         # Filtration condition -
-        # 1. No other neighbor in the 7x7 neighborhood of the peak must already
-        # be in the peak list
-        # 2. If boundPeak is true, All the points in a 1x1 region around the
+        # 1. If boundPeak is true, All the points in a 1x1 region around the
         # peak must be in the search region
         #   -> Otherwise the peak found is too close to the edge
-        # 3. If highPeak is true, the peak found must be above the half-width
+        # 2. If highPeak is true, the peak found must be above the half-width
         # half-maximum level
-        # 4. The SNR must be greater than 3
+        # 3. The SNR must be greater than 3
         #   -> Found by averaging the pixels near the peak and dividing by the
         #   noise level
+        # 4. No other neighbor in the 7x7 neighborhood of the peak must already
+        # be in the peak list
         #
         # Each line in the lambda function below represents the conditions
         # in the above order
@@ -187,10 +187,11 @@ class Peak () :
         validPeak = lambda pk :\
         (boundPeak or len(pc.neighsInReg(pk, self.reg, 1)) == 8) and\
         (not highPeak or self.hillKey(pk) >= signal) and\
-        (not snrNoise or np.mean([snrKey(p)
-                                for p
+        (not snrNoise or np.mean([snrKey(p) for p
                                 in ([pk] + pc.neighsInReg(pk, self.reg, 1))
-                                ])/snrNoise > 3)
+                                ])/snrNoise > 3) and\
+        True not in [p in peaks 
+                    for p in pc.tolNeighs(pk, tol)]
 
         # No need to keep track of iteration number
         log.info("Performing SHC for {} iterations".format(iters))
@@ -306,9 +307,17 @@ class Peak () :
         ))))//distGrade
 
         # Dict --> component index : list of peaks
-        comp_pk = {i:[p for p in self.hillOpts if pc.isPointIn(p, c)] for i,c in enumerate(self.comps)}
+        comp_pk = {i:[p for p 
+                    in self.hillOpts 
+                    if pc.isPointIn(p, c)
+                    ] 
+                for i,c in enumerate(self.comps)
+        }
         # Dict --> component index : distance from centre of image to centre of component
-        comp_dist = {i:compCentreDist(c, imCent) for i,c in enumerate(self.comps)}
+        comp_dist = {i:compCentreDist(c, imCent) 
+                for i,c 
+                in enumerate(self.comps)
+        }
 
         ######################################################################
         # Comparator function for regions -
@@ -319,13 +328,16 @@ class Peak () :
                 or (comp_dist[c1] == comp_dist[c2] and len(self.comps[c1]) > len(self.comps[c2]))
 
         # Sort the list of indices according to the comparator 'regless'
-        compInds = sorted(range(len(self.comps)), key=Peak.comparatorKey(regLess))
+        compInds = sorted(range(len(self.comps)), key=comparatorKey(regLess))
 
         ######################################################################
         # Return the top two bright peaks in the best component after filtering
         # the ones, which are less than half-width half-maximum, out
         ######################################################################
-        bestPeaks = [pk for pk in comp_pk[compInds[0]] if not signal or self.hillKey(pk) >= signal]
+        bestPeaks = [pk for pk 
+                in comp_pk[compInds[0]] 
+                if not signal or self.hillKey(pk) >= signal
+        ]
 
         self.filtPeaks = sorted(bestPeaks, key=self.hillKey, reverse=True)[:2]
         log.info("Filtered down the peaks from SHC to {} peaks".format(len(self.filtPeaks)))

@@ -351,38 +351,38 @@ class Batch () :
             g.setPeaks()
             runlog.info("{} --> Found peaks".format(g.objid))
 
-            csvLine, progressLine = (g.csvLine(), g.progressLine())
+            ret = (g.csvLine(), g.progressLine())
+            csvLine, progressLine = ret
+            purity, rep_band = pp.get_purity_band(g)
+            if rep_band is not None :
+                if purity :
+                    bands = pp.get_bands_csv (g, self.bands)
+
+                    pid1, pid2 = pp.peak_to_objid(g.cutouts[rep_band].wcs, g.peaks[rep_band].filtPeaks)
+                    self.purelog.info(f"{g.objid},{bands},{pid1},{pid2}")
+                else :
+                    self.impurelog.info(csvLine)
+                    for b in g.bands :
+                        if len(g.peaks[b].filtPeaks) != 2 :
+                            continue
+
+                        img = g.getPeaksMarked(b, True)
+                        plt.imshow(img)
+                        plt.axis('off')
+                        plt.savefig(os.path.join(self.resFold, "{}-{}_result.png".format(g.objid, b)),
+                                    bbox_inches='tight',
+                                    pad_inches=0)
+                        plt.close()
+
+                    runlog.info("{} --> Results for manual impure classification".format(g.objid))
         except Exception as e :
             runlog.info("{} --> ERROR : {}".format(g.objid, e))
-            return (str(g.objid) + 2*len(self.bands)*",ERROR", str(g.objid) + " -->" + len(self.bands)*" ERROR")
-
-        purity, rep_band = pp.get_purity_band(g)
-        if rep_band is not None :
-            if purity :
-                bands = pp.get_bands_csv (g, self.bands)
-
-                pid1, pid2 = pp.peak_to_objid(g.cutouts[rep_band].wcs, g.peaks[rep_band].filtPeaks)
-                self.purelog.info(f"{g.objid},{bands},{pid1},{pid2}")
-            else :
-                self.impurelog.info(csvLine)
-                for b in g.bands :
-                    if len(g.peaks[b].filtPeaks) != 2 :
-                        continue
-
-                    img = g.getPeaksMarked(b, True)
-                    plt.imshow(img)
-                    plt.axis('off')
-                    plt.savefig(os.path.join(self.resFold, "{}-{}_result.png".format(g.objid, b)),
-                                bbox_inches='tight',
-                                pad_inches=0)
-                    plt.close()
-
-                runlog.info("{} --> Results for manual impure classification".format(g.objid))
+            ret = (str(g.objid) + 2*len(self.bands)*",ERROR", str(g.objid) + " -->" + len(self.bands)*" ERROR")
 
         g.delete()
         runlog.info("{} --> Deleted files".format(g.objid))
         del g
-        return csvLine, progressLine
+        return ret
 
     def classifySerial (self) :
         self.gals = []

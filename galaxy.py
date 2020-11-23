@@ -190,15 +190,14 @@ class Galaxy () :
             # hasn't already been loaded in memory
             ######################################################################
             if b in Galaxy.default_bands and self.cutouts[b] is None :
-                ret = fp.cutout(self.getFitsPath(b), self.cood, rad)
-                self.cutouts[b] = None if ret is None else ret.data
+                self.cutouts[b] = fp.cutout(self.getFitsPath(b), self.cood, rad)
                 log.info("{} --> Got cutout for {}-band".format(self.objid, b))
 
     def smoothen (self, reduc=2, sgx=5, sgy=5) :
         """ Smoothens the image in all bands """
 
         for b, cut in self.cutouts.items() :
-            self.imgs[b] = fp.smoothen(cut, reduc, sgx, sgy)
+            self.imgs[b] = fp.smoothen(cut.data, reduc, sgx, sgy)
             log.info("{} --> Smoothened {}-band".format(self.objid, b))
 
     def hullRegion (self, low=25, high=50) :
@@ -278,7 +277,7 @@ class Galaxy () :
 
                 if not fitFail :
                     self.dists[b].inferLevels()
-                    self.dists[b].estimateNoise(self.cutouts[b], self.imgs[b])
+                    self.dists[b].estimateNoise(self.cutouts[b].data, self.imgs[b])
                     log.info("{} --> Fit the light profile, inferred noise/signal and SNR noise for {}-band".format(self.objid, b))
 
     def setPeaks (self) :
@@ -291,7 +290,7 @@ class Galaxy () :
             else :
                 self.peaks[b] = pk.Peak(b, lambda p:self.imgs[b][p])
                 self.peaks[b].setRegion(self.hullRegs[b], self.dists[b].noise)
-                self.peaks[b].shc(lambda p : self.cutouts[b][p], self.dists[b].noiseSNR)
+                self.peaks[b].shc(lambda p : self.cutouts[b].data[p], self.dists[b].noiseSNR)
                 self.peaks[b].filterPeaks(tuple(np.array(self.imgs[b].shape)//2),
                                         self.dists[b].signal)
                 log.info("{} --> Set peaks for {}-band".format(self.objid, b))
@@ -352,8 +351,8 @@ class Galaxy () :
         the image that is returned
         """
 
-        cuts = {b:fp.emptyImage if cut is None else cut
-            for b,cut
+        cuts = {b:fp.emptyImage if cut is None else cut.data
+            for b, cut
             in Galaxy.stripDict(self.cutouts, bands).items()}
         return Galaxy.copyRet(cuts, bands, asDict)
 
@@ -376,7 +375,7 @@ class Galaxy () :
     def getSmooth (self, bands="", triple=False, asDict=False) :
         """ Returns the smoothed image """
 
-        imgs = {b:fp.toThreeChannel(np.zeros_like(self.cutouts[b]) if not img.size else img) if triple
+        imgs = {b:fp.toThreeChannel(np.zeros_like(self.cutouts[b].data) if not img.size else img) if triple
             else np.copy(img)
             for b, img
             in Galaxy.stripDict(self.imgs, bands).items()}

@@ -89,7 +89,7 @@ class Peak () :
         self.hillKey = hillKey                              # Underlying grayscale values for hill climbing
         self.reg = fp.emptyCoods                            # Region of hill climbing. Serves as input to hillKey
         self.hillOpts = Peak.emptyPeaks                     # Init hill climbing optima to the empty OrderedDict
-        self.filtPeaks = []                                     # Init final peaks to the empty list
+        self.filtPeaks = []                                 # Init final peaks to the empty list
         self.comps = []                                     # Init connected components to the empty list
         self.btype = btype                                  # Init to None or an enum signifying failure as supplied by the caller
         log.info("Initialised peak object")
@@ -190,7 +190,7 @@ class Peak () :
         (not snrNoise or np.mean([snrKey(p) for p
                                 in ([pk] + pc.neighsInReg(pk, self.reg, 1))
                                 ])/snrNoise > 3) and\
-        True not in [p in peaks 
+        True not in [p in peaks
                     for p in pc.tolNeighs(pk, tol)]
 
         # No need to keep track of iteration number
@@ -307,15 +307,15 @@ class Peak () :
         ))))//distGrade
 
         # Dict --> component index : list of peaks
-        comp_pk = {i:[p for p 
-                    in self.hillOpts 
+        comp_pk = {i:[p for p
+                    in self.hillOpts
                     if pc.isPointIn(p, c)
-                    ] 
+                    ]
                 for i,c in enumerate(self.comps)
         }
         # Dict --> component index : distance from centre of image to centre of component
-        comp_dist = {i:compCentreDist(c, imCent) 
-                for i,c 
+        comp_dist = {i:compCentreDist(c, imCent)
+                for i,c
                 in enumerate(self.comps)
         }
 
@@ -334,8 +334,8 @@ class Peak () :
         # Return the top two bright peaks in the best component after filtering
         # the ones, which are less than half-width half-maximum, out
         ######################################################################
-        bestPeaks = [pk for pk 
-                in comp_pk[compInds[0]] 
+        bestPeaks = [pk for pk
+                in comp_pk[compInds[0]]
                 if not signal or self.hillKey(pk) >= signal
         ]
 

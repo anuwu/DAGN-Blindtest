@@ -9,6 +9,8 @@ import concurrent.futures as conf
 from textwrap import TextWrapper as txwr
 
 import galaxy
+import post_process as pp
+
 Galaxy = galaxy.Galaxy
 
 # Create the /Logs folder for the root directory if it doesn't already exist
@@ -39,6 +41,22 @@ runlog.info("Batch runner started!")
 
 sys.setrecursionlimit(10**6)
 
+def logFixFmt (fix, k=50) :
+    """ Formats error messages for the run logger """
+    return  2*(k*"#" + '\n') + txwr(width=k).fill(text=fix) + '\n' + 2*(k*"#" + '\n')
+
+def isPure (plist) :
+    """
+    Receives a list of type [(band, peak_list)]
+    and decides whether the peak detection is pure
+    """
+
+    if len(plist) == 1 :
+        return True, plist[0][0]
+
+
+
+
 class Batch () :
     """
     Class that loads the FITS data corresponding to a .csv file of SDSS objIDs
@@ -63,10 +81,6 @@ class Batch () :
         finally :
             return batch
 
-    def logFixFmt (fix, k=50) :
-        """ Formats error messages for the run logger """
-        return  2*(k*"#" + '\n') + txwr(width=k).fill(text=fix) + '\n' + 2*(k*"#" + '\n')
-
     #############################################################################################################
     #############################################################################################################
 
@@ -84,14 +98,14 @@ class Batch () :
         # Checks if the batchRoot directory has been created at the root directory
         runlog.info("Checking environment for the new batch.")
         if not os.path.isdir(Batch.batchRoot) :
-            runlog.critical("Data folder not found!\n\n{}".format(Batch.logFixFmt(
+            runlog.critical("Data folder not found!\n\n{}".format(logFixFmt(
                 "Please create a folder named 'Data' in the notebook directory and rerun!"
             )))
             raise FileNotFoundError
 
         # Checks if batchName folder exists in batchRoot
         if not os.path.isdir(self.batchFold) :
-            runlog.critical("Batch folder not found\n\n{}".format(Batch.logFixFmt(
+            runlog.critical("Batch folder not found\n\n{}".format(logFixFmt(
                 "Please create a folder for the batch at '{}' and rerun!".format(self.batchFold)
             )))
             raise FileNotFoundError
@@ -102,7 +116,7 @@ class Batch () :
         # folder
         ######################################################################
         if not os.path.exists(self.csvPath) :
-            runlog.critical("Batch .csv file at path '{}' not found\n\n{}".format(self.batchFold, Batch.logFixFmt(
+            runlog.critical("Batch .csv file at path '{}' not found\n\n{}".format(self.batchFold, logFixFmt(
                 "Please supply the name of the appropriate .csv file and rerun!"
             )))
             raise FileNotFoundError
@@ -136,31 +150,50 @@ class Batch () :
         else :
             runlog.info("Results folder for the batch already exists")
 
-    def __setBatchLogger__ (self) :
+    def __setLoggers__ (self) :
         """
         Sets a logger to record the results as a .csv file
         Can do because logging module of Python is thread-safe
         """
 
-        # Creating the .csv file for results
-        writeHeader = False if os.path.exists(self.resCsvPath) else True
-        reslog = log.getLogger(self.batchName + "_result")
-        reslog.setLevel(log.INFO)
-        resFH = log.FileHandler(self.resCsvPath)
-        resFH.setFormatter(log.Formatter("%(message)s"))
+        def setLogger (csvpath, loggername, headerline, runlogtype) :
+            """ Internal function to get the logger """
 
-        # Ensuring only one file handler exists
-        for h in reslog.handlers :
-            reslog.removeHandler(h)
-        reslog.addHandler(resFH)
+            # Creating the .csv file for results
+            writeHeader = False if os.path.exists(csvpath) else True
+            logger = log.getLogger(loggername)
+            logger.setLevel(log.INFO)
+            fh = log.FileHandler(csvpath)
+            fh.setFormatter(log.Formatter("%(message)s"))
 
-        if writeHeader :
-            reslog.info("objid,u-type,u-peaks,g-type,g-peaks,r-type,r-peaks,i-type,i-peaks")
-            runlog.info("Created result csv")
-        else :
-            runlog.info("Result csv already exists")
+            # Ensuring only one file handler exists
+            for h in logger.handlers :
+                logger.removeHandler(h)
+            logger.addHandler(fh)
 
-        self.reslog = reslog
+            if writeHeader :
+                logger.info(headerline)
+                runlog.info(f"Created {runlogtype} csv")
+            else :
+                runlog.info(f"{runlogtype} csv already exists")
+
+            return logger
+
+        self.reslog = setLogger(self.resCsvPath,
+            self.batchName + "_result",
+            "objid,u-type,u-peaks,g-type,g-peaks,r-type,r-peaks,i-type,i-peaks",
+            "result"
+        )
+        self.purelog = setLogger(self.pureCsvPath,
+            self.batchName + "_pure",
+            "objid,bands,pid1,pid2",
+            "pure"
+        )
+        self.impurelog = setLogger(self.impureCsvPath,
+            self.batchName + "_impure",
+            "objid,u-type,u-peaks,g-type,g-peaks,r-type,r-peaks,i-type,i-peaks",
+            "impure"
+        )
 
     def __setBatchList__ (self) :
         """ Sets the list of galaxies to classify -
@@ -175,7 +208,7 @@ class Batch () :
         try :
             df = pd.read_csv(self.csvPath, dtype=object, usecols=["objid", "ra", "dec"])
         except ValueError as e :
-            runlog.critical("Invalid columns in .csv file\n\n{}".format(Batch.logFixFmt(
+            runlog.critical("Invalid columns in .csv file\n\n{}".format(logFixFmt(
                 "Please ensure columns 'objid', 'ra' and 'dec' are present in the .csv \
                 file (in that order) and rerun!"
                 )))
@@ -186,7 +219,7 @@ class Batch () :
             resIDs = [] if not os.path.exists(self.resCsvPath) else\
                     list(pd.read_csv(self.resCsvPath, dtype=object)['objid'])
         except ValueError as e :
-            runlog.critical("Error in loading result csv file\n\n{}".format(Batch.logFixFmt(
+            runlog.critical("Error in loading result csv file\n\n{}".format(logFixFmt(
                 "Please ensure the first column in 'objid'. If the file is corrupted, delete \
                 it and rerun!"
             )))
@@ -219,7 +252,7 @@ class Batch () :
         # invalid bands
         ######################################################################
         if not areBandsValid(bands) :
-            runlog.warning("One or more bands in '{}' invalid\n\n{}".format(bands, Batch.logFixFmt(
+            runlog.warning("One or more bands in '{}' invalid\n\n{}".format(bands, logFixFmt(
             "Please ensure that bands are a combination of 'ugri' only!"
             )))
             raise ValueError("Invalid Band. Please use 'ugri'")
@@ -227,7 +260,7 @@ class Batch () :
         self.bands = bands
 
         # Sets the result logger for the batch
-        self.__setBatchLogger__()
+        self.__setLoggers__()
 
         # Initialises the galaxy objects that are yet to be classified in this batch
         self.__setBatchList__()
@@ -273,6 +306,16 @@ class Batch () :
         return os.path.join(self.batchFold, self.csvName[:-4] + "_result.csv")
 
     @property
+    def pureCsvPath (self) :
+        """ Property attribute - Path of the pure .csv file """
+        return os.path.join(self.batchFold, self.csvName[:-4] + "_pure_pids.csv")
+
+    @property
+    def impureCsvPath (self) :
+        """ Property attribute - Path of the impure .csv file """
+        return os.path.join(self.batchFold, self.csvName[:-4] + "_impure.csv")
+
+    @property
     def logPath (self) :
         """ Property attribute - Path of the log file for the batch """
         return os.path.join(os.getcwd(), self.batchFold, "{}.log".format(self.batchName))
@@ -292,6 +335,7 @@ class Batch () :
         try :
             args += (self.fitsFold, self.bands)
             g = Galaxy(*args)
+
             g.download()
             runlog.info("{} --> Downloaded".format(g.objid))
             g.cutout()
@@ -307,27 +351,41 @@ class Batch () :
             g.setPeaks()
             runlog.info("{} --> Found peaks".format(g.objid))
 
-            for b in g.bands :
-                img = g.getPeaksMarked(b, True)
-                plt.imshow(img)
-                plt.axis('off')
-                plt.savefig(os.path.join(self.resFold, "{}-{}_result.png".format(g.objid, b)),
-                            bbox_inches='tight',
-                            pad_inches=0)
-                plt.close()
-
-            runlog.info("{} --> Results generated".format(g.objid))
-            ret = (g.csvLine(), g.progressLine())
+            csvLine, progressLine = (g.csvLine(), g.progressLine())
         except Exception as e :
             runlog.info("{} --> ERROR : {}".format(g.objid, e))
-            ret = (str(g.objid) + 2*len(self.bands)*",ERROR", str(g.objid) + " -->" + len(self.bands)*" ERROR")
+            return (str(g.objid) + 2*len(self.bands)*",ERROR", str(g.objid) + " -->" + len(self.bands)*" ERROR")
+
+        purity, rep_band = pp.get_purity_band(g)
+        if rep_band is not None :
+            if purity :
+                bands = pp.get_bands_csv (g, self.bands)
+
+                pid1, pid2 = pp.peak_to_objid(g.cutouts[rep_band].wcs, g.peaks[rep_band].filtPeaks)
+                self.purelog.info(f"{g.objid},{bands},{pid1},{pid2}")
+            else :
+                self.impurelog.info(csvLine)
+                for b in g.bands :
+                    if len(g.peaks[b].filtPeaks) != 2 :
+                        continue
+
+                    img = g.getPeaksMarked(b, True)
+                    plt.imshow(img)
+                    plt.axis('off')
+                    plt.savefig(os.path.join(self.resFold, "{}-{}_result.png".format(g.objid, b)),
+                                bbox_inches='tight',
+                                pad_inches=0)
+                    plt.close()
+
+                runlog.info("{} --> Results for manual impure classification".format(g.objid))
 
         g.delete()
         runlog.info("{} --> Deleted files".format(g.objid))
         del g
-        return ret
+        return csvLine, progressLine
 
     def classifySerial (self) :
+        self.gals = []
         for i, args in enumerate(self.galaxies) :
             csvLine, progLine = self.classifyGal(args)
             self.reslog.info(csvLine)

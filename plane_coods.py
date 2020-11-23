@@ -14,6 +14,8 @@ ptIndex = lambda pt, reg : np.argwhere(ptRegCheck(pt, reg))
 tolNeighs = lambda pt, t : [(pt[0]+dx, pt[1]+dy)
                         for dx in range(-t, t+1) for dy in range(-t, t+1)
                         if dx or dy]
+# Used for purity checking
+purityNeighs = lambda pt : tolNeighs(pt, 3) + [pt]
 # Filters the output of the above within a region 'reg'
 neighsInReg = lambda pt, reg, t : [p for p in tolNeighs(pt, t)
                                 if isPointIn(p, reg)]

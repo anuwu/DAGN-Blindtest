@@ -5,7 +5,6 @@ import pandas as pd
 import logging as log
 import datetime as dt
 import matplotlib.pyplot as plt
-import concurrent.futures as conf
 from textwrap import TextWrapper as txwr
 
 import galaxy
@@ -44,18 +43,6 @@ sys.setrecursionlimit(10**6)
 def logFixFmt (fix, k=50) :
     """ Formats error messages for the run logger """
     return  2*(k*"#" + '\n') + txwr(width=k).fill(text=fix) + '\n' + 2*(k*"#" + '\n')
-
-def isPure (plist) :
-    """
-    Receives a list of type [(band, peak_list)]
-    and decides whether the peak detection is pure
-    """
-
-    if len(plist) == 1 :
-        return True, plist[0][0]
-
-
-
 
 class Batch () :
     """

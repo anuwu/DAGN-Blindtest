@@ -50,6 +50,7 @@ The following packages are required to be able to run locally (*works for python
  - `pandas`
  - `matplotlib`
  - `bs4` (*AKA - BeautifulSoup*)
+ - `lxml` (*Needed by BeautifulSoup for scraping SDSS*)
  - `cv2` (*AKA - OpenCV*)
 
 # How?

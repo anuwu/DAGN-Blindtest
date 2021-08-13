@@ -31,6 +31,11 @@ objID,ra,dec
 
   > If you're running it locally, you may skip the code cells under the **Preparations** heading in the notebook. Check out the [package requirements](#requirements)
 
+- To run GOTHIC locally for a batch of galaxies, use the following command (replace `<batchname>` with the name of your batch -
+```
+python gothic.py <batchname>
+```
+
 ## Interpreting the results
 
 Classification result will be available in the folder which contains the `.csv` file. A sample entry is shown below -
@@ -51,7 +56,7 @@ The following packages are required to be able to run locally (*works for python
  - `matplotlib`
  - `bs4` (*AKA - BeautifulSoup*)
  - `lxml` (*Needed by BeautifulSoup for scraping SDSS*)
- - `cv2` (*AKA - OpenCV*)
+ - `opencv-python` (*AKA - OpenCV*)
 
 # How?
 

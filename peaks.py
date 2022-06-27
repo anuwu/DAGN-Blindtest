@@ -95,7 +95,7 @@ class Peak () :
         log.info("Initialised peak object")
 
     def __str__ (self) :
-        """ Peak object to string """
+        """ Peak object to stringf """
         return "{} : {}".format(self.btype, self.filtPeaks)
 
     def setType (self) :
@@ -306,18 +306,19 @@ class Peak () :
             np.mean(cm, axis=0) - np.array(cent)//2
         ))))//distGrade
 
-        # Dict --> component index : list of peaks
-        comp_pk = {i:[p for p
-                    in self.hillOpts
-                    if pc.isPointIn(p, c)
-                    ]
-                for i,c in enumerate(self.comps)
-        }
-        # Dict --> component index : distance from centre of image to centre of component
-        comp_dist = {i:compCentreDist(c, imCent)
-                for i,c
-                in enumerate(self.comps)
-        }
+        comp_has_pks = {}                   # Dict --> component index : if component has peaks
+        comps_with_peak = []                # Dict --> component index : component with peaks
+        comp_pk = {}                        # Dict --> component index : peaks in a component
+        comp_dist = {}                      # Dict --> component index : distance from centre of image to centre of component
+        for i, c in enumerate(self.comps) :
+            peak_lst = [p for p in self.hillOpts if pc.isPointIn(p, c)]
+            has_peak = len(peak_lst) > 0
+            comp_has_pks[i] = has_peak
+
+            if has_peak :
+                comps_with_peak.append(c)
+                comp_pk[i] = peak_lst
+                comp_dist[i] = compCentreDist(c, imCent)
 
         ######################################################################
         # Comparator function for regions -
@@ -325,14 +326,14 @@ class Peak () :
         # 2. Descending size of region
         ######################################################################
         regLess = lambda c1, c2 : comp_dist[c1] < comp_dist[c2] \
-                or (comp_dist[c1] == comp_dist[c2] and len(self.comps[c1]) > len(self.comps[c2]))
+                or (comp_dist[c1] == comp_dist[c2] and len(comps_with_peak[c1]) > len(comps_with_peak[c2]))
 
         # Sort the list of indices according to the comparator 'regless'
-        compInds = sorted(range(len(self.comps)), key=comparatorKey(regLess))
+        compInds = sorted(range(len(comps_with_peak)), key=comparatorKey(regLess))
 
         ######################################################################
         # Return the top two bright peaks in the best component after filtering
-        # the ones, which are less than half-width half-maximum, out
+        # out the ones which are less than HWHM
         ######################################################################
         bestPeaks = [pk for pk
                 in comp_pk[compInds[0]]

@@ -12,7 +12,7 @@ sys.setrecursionlimit(10**8)
 
 # Setting the logger
 log = logging.getLogger(__name__)
-log.setLevel(logging.WARNING)
+log.setLevel(logging.INFO)
 fileHandler = logging.FileHandler("./peaks.log", mode='w')
 fileHandler.setFormatter(logging.Formatter("%(levelname)s : PEAKS : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
@@ -306,17 +306,14 @@ class Peak () :
             np.mean(cm, axis=0) - np.array(cent)//2
         ))))//distGrade
 
-        comp_has_pks = {}                   # Dict --> component index : if component has peaks
-        comps_with_peak = []                # Dict --> component index : component with peaks
+        comps_with_peak = {}                # Dict --> component index : component with peaks
         comp_pk = {}                        # Dict --> component index : peaks in a component
         comp_dist = {}                      # Dict --> component index : distance from centre of image to centre of component
         for i, c in enumerate(self.comps) :
             peak_lst = [p for p in self.hillOpts if pc.isPointIn(p, c)]
-            has_peak = len(peak_lst) > 0
-            comp_has_pks[i] = has_peak
 
-            if has_peak :
-                comps_with_peak.append(c)
+            if len(peak_lst) > 0 :
+                comps_with_peak[i] = c
                 comp_pk[i] = peak_lst
                 comp_dist[i] = compCentreDist(c, imCent)
 

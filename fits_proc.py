@@ -14,7 +14,7 @@ from astropy.utils.exceptions import AstropyWarning
 
 # Setting the logger
 log = logging.getLogger(__name__)
-log.setLevel(logging.WARNING)
+log.setLevel(logging.INFO)
 fileHandler = logging.FileHandler("./fits_proc.log", mode='w')
 fileHandler.setFormatter(logging.Formatter("%(levelname)s : FITS_PROC : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))

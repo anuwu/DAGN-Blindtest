@@ -12,7 +12,7 @@ import peaks as pk
 
 # Setting the logger
 log = logging.getLogger(__name__)
-log.setLevel(logging.WARNING)
+log.setLevel(logging.INFO)
 fileHandler = logging.FileHandler("./galaxy.log", mode='w')
 fileHandler.setFormatter(logging.Formatter("%(levelname)s : GALAXY : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))
@@ -288,11 +288,16 @@ class Galaxy () :
                 self.peaks[b] = pk.Peak(b, None, pk.GalType.FILTERED)
                 log.info("{} --> Peak setting for {}-band filtered out".format(self.objid, b))
             else :
+                # print("galaxy.py : Going to set peaks")
                 self.peaks[b] = pk.Peak(b, lambda p:self.imgs[b][p])
+                # print("galaxy.py : Created peak object")
                 self.peaks[b].setRegion(self.hullRegs[b], self.dists[b].noise)
+                # print("galaxy.py : Set search region")
                 self.peaks[b].shc(lambda p : self.cutouts[b].data[p], self.dists[b].noiseSNR)
+                # print("galaxy.py : Finished hill climbing")
                 self.peaks[b].filterPeaks(tuple(np.array(self.imgs[b].shape)//2),
                                         self.dists[b].signal)
+                # print("galaxy.py : Filtered the peaks")
                 log.info("{} --> Set peaks for {}-band".format(self.objid, b))
 
             self.peaks[b].setType()
@@ -313,7 +318,7 @@ class Galaxy () :
         """
 
         band_entry = {b:pk.csvColumn() for b, pk in self.peaks.items()}
-        args = tuple([str(self)] + [band_entry[b] for b in Galaxy.default_bands])
+        args = tuple([str(self)] + [band_entry[b] for b in self.bands if b in Galaxy.default_bands])
         return "{},{},{},{},{}".format(*args)
 
     def progressLine (self) :

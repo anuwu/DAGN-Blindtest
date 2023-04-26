@@ -339,6 +339,7 @@ class Batch () :
             g.setPeaks()
             runlog.info("{} --> Found peaks".format(g.objid))
 
+            ret = "haha", "lol"
             ret = (g.csvLine(), g.progressLine())
             csvLine, progressLine = ret
             purity, rep_band = pp.get_purity_band(g)

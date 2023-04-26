@@ -7,7 +7,7 @@ import logging
 
 # Setting the logger
 log = logging.getLogger(__name__)
-log.setLevel(logging.WARNING)
+log.setLevel(logging.INFO)
 fileHandler = logging.FileHandler("./sdss_scrape.log", mode='w')
 fileHandler.setFormatter(logging.Formatter("%(levelname)s : SDSS_SCRAPE : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))

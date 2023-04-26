@@ -13,7 +13,7 @@ warnings.simplefilter('ignore', category=OptimizeWarning)
 
 # Setting the logger
 log = logging.getLogger(__name__)
-log.setLevel(logging.WARNING)
+log.setLevel(logging.INFO)
 fileHandler = logging.FileHandler("./light_profile.log", mode='w')
 fileHandler.setFormatter(logging.Formatter("%(levelname)s : LIGHT_PROFILE : %(asctime)s : %(message)s",
                          datefmt='%m/%d/%Y %I:%M:%S %p'))

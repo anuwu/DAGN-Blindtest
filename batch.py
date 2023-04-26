@@ -21,6 +21,7 @@ def dateFmt () :
     dtStr = str(dt.datetime.now())
     dtStr = dtStr[:dtStr.find('.')]
     dtStr = dtStr.replace(' ', '_')
+
     return dtStr
 
 # Set the logger for this run of classifications

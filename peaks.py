@@ -309,6 +309,8 @@ class Peak () :
         comps_with_peak = {}                # Dict --> component index : component with peaks
         comp_pk = {}                        # Dict --> component index : peaks in a component
         comp_dist = {}                      # Dict --> component index : distance from centre of image to centre of component
+        indices_with_peaks = []             # List --> indices of components with peaks
+
         for i, c in enumerate(self.comps) :
             peak_lst = [p for p in self.hillOpts if pc.isPointIn(p, c)]
 
@@ -316,6 +318,7 @@ class Peak () :
                 comps_with_peak[i] = c
                 comp_pk[i] = peak_lst
                 comp_dist[i] = compCentreDist(c, imCent)
+                indices_with_peaks.append(i)
 
         ######################################################################
         # Comparator function for regions -
@@ -326,7 +329,7 @@ class Peak () :
                 or (comp_dist[c1] == comp_dist[c2] and len(comps_with_peak[c1]) > len(comps_with_peak[c2]))
 
         # Sort the list of indices according to the comparator 'regless'
-        compInds = sorted(range(len(comps_with_peak)), key=comparatorKey(regLess))
+        compInds = sorted(indices_with_peaks, key=comparatorKey(regLess))
 
         ######################################################################
         # Return the top two bright peaks in the best component after filtering

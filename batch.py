@@ -26,7 +26,7 @@ def dateFmt () :
 
 # Set the logger for this run of classifications
 runlog = log.getLogger(__name__)
-runlog.setLevel(log.INFO)
+runlog.setLevel(log.WARNING)
 runLogPath = "Logs/run_{}.log".format(dateFmt())
 fileHandler = log.FileHandler(runLogPath)
 fileHandler.setFormatter(log.Formatter("%(levelname)s : RUN_INIT : %(asctime)s : %(message)s",

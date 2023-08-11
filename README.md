@@ -1,5 +1,11 @@
 # DAGN-Blindtest
 
+[Automated detection of double nuclei galaxies using GOTHIC and the discovery of a large sample of dual AGN](https://academic.oup.com/mnras/article/524/3/4482/7227924)  
+Anwesh Bhattacharya, CP Nehal, Abhishek Paswan, Snehanshu Saha, Francoise Combes
+*Monthly Notices of the Royal Astronomical Society*
+
+To find the data corresponding to figure 2 in the paper, please check the `\Data` folder.
+
 ![title](Images/ngc-3758_background.jpg)
 
 Welcome! The galaxy centred in the image above is NGC-3758. It's a Double Active Nuclei Galaxy (**DAGN**) and boasts of two supermassive black-holes in its heart. Such galaxies are hard to find and until date, have only been found by chance/manual observation. The aim of this project is automate searching the Sloan Digital Sky Survey (**SDSS**) catalog to find galaxies that look similar to NGC-3758

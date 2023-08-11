@@ -2,6 +2,7 @@
 
 [Automated detection of double nuclei galaxies using GOTHIC and the discovery of a large sample of dual AGN](https://academic.oup.com/mnras/article/524/3/4482/7227924)  
 Anwesh Bhattacharya, CP Nehal, Abhishek Paswan, Snehanshu Saha, Francoise Combes
+
 *Monthly Notices of the Royal Astronomical Society*
 
 To find the data corresponding to figure 2 in the paper, please check the `\Data` folder.
